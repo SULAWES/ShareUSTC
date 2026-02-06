@@ -22,6 +22,11 @@ request.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
+    // 如果是 FormData，删除默认的 Content-Type，让浏览器自动设置 multipart/form-data 和 boundary
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
+
     console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`, config.data);
     return config;
   },
@@ -69,10 +74,13 @@ request.interceptors.response.use(
               return request(config);
             }
           } else {
-            // 刷新失败，跳转到登录
-            ElMessage.error('登录已过期，请重新登录');
-            authStore.logoutUser();
-            router.push('/login');
+            // 刷新失败，清除登录状态并提示
+            authStore.clearAuth();
+            ElMessage.error('登录已失效，请重新登录');
+            // 如果不在登录页面，跳转到登录
+            if (router.currentRoute.value.path !== '/login') {
+              router.push('/login');
+            }
           }
           break;
         case 403:

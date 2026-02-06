@@ -18,11 +18,12 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 
 const pinia = createPinia()
 app.use(pinia)
-app.use(router)
 app.use(ElementPlus)
 
-// 初始化认证状态
+// 初始化认证状态（异步验证 Token）
 const authStore = useAuthStore()
-authStore.initialize()
-
-app.mount('#app')
+authStore.initialize().then(() => {
+  // 等待认证状态验证完成后再使用路由和挂载应用
+  app.use(router)
+  app.mount('#app')
+})

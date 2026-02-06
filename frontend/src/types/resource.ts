@@ -1,0 +1,213 @@
+// 资源类型
+export const ResourceType = {
+  WebMarkdown: 'web_markdown',
+  Ppt: 'ppt',
+  Pptx: 'pptx',
+  Doc: 'doc',
+  Docx: 'docx',
+  Pdf: 'pdf',
+  Txt: 'txt',
+  Jpeg: 'jpeg',
+  Jpg: 'jpg',
+  Png: 'png',
+  Zip: 'zip',
+  Other: 'other'
+} as const;
+
+export type ResourceTypeType = typeof ResourceType[keyof typeof ResourceType];
+
+// 资源分类
+export const ResourceCategory = {
+  ExamResult: 'exam_result',
+  LearningNote: 'learning_note',
+  PastPaper: 'past_paper',
+  Note: 'note',
+  ReviewOutline: 'review_outline',
+  Lecture: 'lecture',
+  Other: 'other'
+} as const;
+
+export type ResourceCategoryType = typeof ResourceCategory[keyof typeof ResourceCategory];
+
+// 审核状态
+export const AuditStatus = {
+  Pending: 'pending',
+  Approved: 'approved',
+  Rejected: 'rejected'
+} as const;
+
+export type AuditStatusType = typeof AuditStatus[keyof typeof AuditStatus];
+
+// 资源统计信息
+export interface ResourceStats {
+  views: number;
+  downloads: number;
+  likes: number;
+  avgDifficulty?: number;
+  avgQuality?: number;
+  avgDetail?: number;
+  ratingCount: number;
+}
+
+// 资源列表项
+export interface ResourceListItem {
+  id: string;
+  title: string;
+  courseName?: string;
+  resourceType: string;
+  category: string;
+  tags?: string[];
+  auditStatus: string;
+  createdAt: string;
+  stats: ResourceStats;
+  uploaderName?: string;
+}
+
+// 资源详情
+export interface ResourceDetail {
+  id: string;
+  title: string;
+  authorId?: string;
+  uploaderId: string;
+  courseName?: string;
+  resourceType: string;
+  category: string;
+  tags?: string[];
+  description?: string;
+  fileSize?: number;
+  auditStatus: string;
+  createdAt: string;
+  updatedAt: string;
+  stats: ResourceStats;
+  uploaderName?: string;
+}
+
+// 资源列表响应
+export interface ResourceListResponse {
+  resources: ResourceListItem[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
+// 资源列表查询参数
+export interface ResourceListQuery {
+  page?: number;
+  perPage?: number;
+  resourceType?: string;
+  category?: string;
+  sortBy?: 'created_at' | 'downloads' | 'likes' | 'rating';
+  sortOrder?: 'asc' | 'desc';
+}
+
+// 资源搜索查询参数
+export interface ResourceSearchQuery {
+  q: string;
+  page?: number;
+  perPage?: number;
+  resourceType?: string;
+  category?: string;
+}
+
+// 上传资源请求
+export interface UploadResourceRequest {
+  title: string;
+  courseName?: string;
+  resourceType: ResourceTypeType;
+  category: ResourceCategoryType;
+  tags?: string[];
+  description?: string;
+}
+
+// 上传资源响应
+export interface UploadResourceResponse {
+  id: string;
+  title: string;
+  resourceType: string;
+  auditStatus: string;
+  aiMessage?: string;
+  createdAt: string;
+}
+
+// 资源类型显示名称映射
+export const ResourceTypeLabels: Record<ResourceTypeType, string> = {
+  [ResourceType.WebMarkdown]: '网页 Markdown',
+  [ResourceType.Ppt]: 'PPT',
+  [ResourceType.Pptx]: 'PPTX',
+  [ResourceType.Doc]: 'Word 文档',
+  [ResourceType.Docx]: 'Word 文档',
+  [ResourceType.Pdf]: 'PDF',
+  [ResourceType.Txt]: '文本文件',
+  [ResourceType.Jpeg]: 'JPEG 图片',
+  [ResourceType.Jpg]: 'JPG 图片',
+  [ResourceType.Png]: 'PNG 图片',
+  [ResourceType.Zip]: 'ZIP 压缩包',
+  [ResourceType.Other]: '其他'
+};
+
+// 资源分类显示名称映射
+export const ResourceCategoryLabels: Record<ResourceCategoryType, string> = {
+  [ResourceCategory.ExamResult]: '考试成绩分布',
+  [ResourceCategory.LearningNote]: '学习心得',
+  [ResourceCategory.PastPaper]: '往年试卷',
+  [ResourceCategory.Note]: '笔记',
+  [ResourceCategory.ReviewOutline]: '复习提纲',
+  [ResourceCategory.Lecture]: '讲义',
+  [ResourceCategory.Other]: '其他'
+};
+
+// 审核状态显示名称映射
+export const AuditStatusLabels: Record<AuditStatusType, string> = {
+  [AuditStatus.Pending]: '待审核',
+  [AuditStatus.Approved]: '已通过',
+  [AuditStatus.Rejected]: '已拒绝'
+};
+
+// 获取资源类型颜色
+export function getResourceTypeColor(type: string): string {
+  const colorMap: Record<string, string> = {
+    [ResourceType.Pdf]: '#F56C6C',
+    [ResourceType.Ppt]: '#E6A23C',
+    [ResourceType.Pptx]: '#E6A23C',
+    [ResourceType.Doc]: '#409EFF',
+    [ResourceType.Docx]: '#409EFF',
+    [ResourceType.WebMarkdown]: '#67C23A',
+    [ResourceType.Txt]: '#909399',
+    [ResourceType.Zip]: '#909399'
+  };
+  return colorMap[type] || '#909399';
+}
+
+// 格式化文件大小
+export function formatFileSize(bytes?: number): string {
+  if (!bytes) return '-';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+// 支持的文件扩展名
+export const SupportedExtensions = [
+  'md', 'markdown', 'ppt', 'pptx', 'doc', 'docx',
+  'pdf', 'txt', 'jpeg', 'jpg', 'png', 'zip'
+];
+
+// 从文件名获取资源类型
+export function getResourceTypeFromFileName(fileName: string): ResourceTypeType {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  const typeMap: Record<string, ResourceTypeType> = {
+    'md': ResourceType.WebMarkdown,
+    'markdown': ResourceType.WebMarkdown,
+    'ppt': ResourceType.Ppt,
+    'pptx': ResourceType.Pptx,
+    'doc': ResourceType.Doc,
+    'docx': ResourceType.Docx,
+    'pdf': ResourceType.Pdf,
+    'txt': ResourceType.Txt,
+    'jpeg': ResourceType.Jpeg,
+    'jpg': ResourceType.Jpg,
+    'png': ResourceType.Png,
+    'zip': ResourceType.Zip
+  };
+  return typeMap[ext] || ResourceType.Other;
+}

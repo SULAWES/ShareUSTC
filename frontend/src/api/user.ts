@@ -1,5 +1,5 @@
 import request from './request';
-import type { User } from '../types/auth';
+import type { User, AuthResponse } from '../types/auth';
 
 // 用户资料更新请求
 export interface UpdateProfileRequest {
@@ -40,8 +40,8 @@ export const updateProfile = (data: UpdateProfileRequest): Promise<User> => {
   return request.put('/users/me', data);
 };
 
-// 实名认证
-export const verifyUser = (data: VerificationRequest): Promise<User> => {
+// 实名认证（返回 AuthResponse 包含新的 Token）
+export const verifyUser = (data: VerificationRequest): Promise<AuthResponse> => {
   return request.post('/users/verify', data);
 };
 

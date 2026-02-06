@@ -170,8 +170,82 @@
 
         <!-- 我的资源页面 -->
         <div v-if="activeMenu === 'resources'" class="content-section">
-          <h2>我的资源</h2>
-          <el-empty description="暂无上传的资源" />
+          <div class="section-header">
+            <h2>我的资源</h2>
+            <el-button type="primary" @click="$router.push('/upload')">
+              <el-icon><Document /></el-icon>
+              上传资源
+            </el-button>
+          </div>
+
+          <div v-if="resourcesLoading" class="loading-state">
+            <el-skeleton :rows="3" animated />
+          </div>
+
+          <el-empty v-else-if="userResources.length === 0" description="暂无上传的资源">
+            <el-button type="primary" @click="$router.push('/upload')">去上传</el-button>
+          </el-empty>
+
+          <div v-else class="resources-list">
+            <el-card v-for="resource in userResources" :key="resource.id" class="resource-card">
+              <div class="resource-header">
+                <h4 class="resource-title" @click="$router.push(`/resources/${resource.id}`)">
+                  {{ resource.title }}
+                </h4>
+                <el-tag :type="getAuditStatusType(resource.auditStatus)" size="small">
+                  {{ getAuditStatusText(resource.auditStatus) }}
+                </el-tag>
+              </div>
+
+              <div class="resource-meta">
+                <span v-if="resource.courseName" class="course-name">{{ resource.courseName }}</span>
+                <span class="resource-type">{{ resource.resourceType }}</span>
+                <span class="resource-category">{{ resource.category }}</span>
+              </div>
+
+              <div class="resource-tags" v-if="resource.tags && resource.tags.length > 0">
+                <el-tag v-for="tag in resource.tags.slice(0, 3)" :key="tag" size="small" effect="plain">
+                  {{ tag }}
+                </el-tag>
+              </div>
+
+              <div class="resource-footer">
+                <div class="resource-stats">
+                  <span><el-icon><View /></el-icon> {{ resource.stats.views }}</span>
+                  <span><el-icon><Download /></el-icon> {{ resource.stats.downloads }}</span>
+                  <span><el-icon><Star /></el-icon> {{ resource.stats.likes }}</span>
+                </div>
+                <div class="resource-actions">
+                  <el-button
+                    type="primary"
+                    link
+                    size="small"
+                    @click="$router.push(`/resources/${resource.id}`)"
+                  >
+                    查看
+                  </el-button>
+                  <el-button
+                    type="danger"
+                    link
+                    size="small"
+                    @click="deleteUserResource(resource)"
+                  >
+                    删除
+                  </el-button>
+                </div>
+              </div>
+            </el-card>
+          </div>
+
+          <div v-if="resourcesTotal > pageSize" class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="resourcesPage"
+              v-model:page-size="pageSize"
+              :total="resourcesTotal"
+              layout="prev, pager, next"
+              @change="loadUserResources"
+            />
+          </div>
         </div>
 
         <!-- 账号设置页面 -->
@@ -256,6 +330,8 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { getCurrentUser, updateProfile, verifyUser } from '../api/user';
 import type { UpdateProfileRequest, VerificationRequest } from '../api/user';
+import { getMyResources, deleteResource } from '../api/resource';
+import type { ResourceListItem } from '../types/resource';
 import {
   getMyImages,
   deleteImage,
@@ -272,7 +348,10 @@ import {
   CircleCheck,
   Picture,
   CopyDocument,
-  Delete
+  Delete,
+  View,
+  Download,
+  Star
 } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
@@ -310,6 +389,12 @@ const pageSize = ref(8);
 const imagesTotal = ref(0);
 const selectedImage = ref<Image | null>(null);
 const imageDetailVisible = ref(false);
+
+// 资源相关状态
+const userResources = ref<ResourceListItem[]>([]);
+const resourcesLoading = ref(false);
+const resourcesPage = ref(1);
+const resourcesTotal = ref(0);
 
 // 加载用户图片
 const loadUserImages = async () => {
@@ -376,10 +461,78 @@ const deleteUserImage = async (image: Image) => {
 // 格式化文件大小
 const formatFileSize = (bytes?: number) => formatImageFileSize(bytes);
 
-// 监听菜单切换，加载图片
+// 加载用户资源
+const loadUserResources = async () => {
+  resourcesLoading.value = true;
+  try {
+    const result = await getMyResources({
+      page: resourcesPage.value,
+      perPage: pageSize.value
+    });
+    userResources.value = result.resources;
+    resourcesTotal.value = result.total;
+  } catch (error: any) {
+    ElMessage.error(error.message || '加载资源失败');
+  } finally {
+    resourcesLoading.value = false;
+  }
+};
+
+// 删除用户资源
+const deleteUserResource = async (resource: ResourceListItem) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除资源 "${resource.title}" 吗？`,
+      '确认删除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    );
+
+    await deleteResource(resource.id);
+    ElMessage.success('删除成功');
+
+    // 如果删除的是最后一个，返回上一页
+    if (userResources.value.length === 1 && resourcesPage.value > 1) {
+      resourcesPage.value--;
+    }
+
+    await loadUserResources();
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.message || '删除失败');
+    }
+  }
+};
+
+// 获取审核状态文本
+const getAuditStatusText = (status: string) => {
+  const statusMap: Record<string, string> = {
+    'pending': '待审核',
+    'approved': '已通过',
+    'rejected': '已拒绝'
+  };
+  return statusMap[status] || status;
+};
+
+// 获取审核状态类型
+const getAuditStatusType = (status: string) => {
+  const typeMap: Record<string, 'info' | 'success' | 'danger'> = {
+    'pending': 'info',
+    'approved': 'success',
+    'rejected': 'danger'
+  };
+  return typeMap[status] || 'info';
+};
+
+// 监听菜单切换，加载数据
 watch(activeMenu, (newVal) => {
   if (newVal === 'images') {
     loadUserImages();
+  } else if (newVal === 'resources') {
+    loadUserResources();
   }
 });
 
@@ -439,10 +592,13 @@ const saveProfile = async () => {
 const submitVerification = async () => {
   verifying.value = true;
   try {
-    const updatedUser = await verifyUser(verifyForm);
-    // 使用 store 的方法更新用户信息，确保全局状态同步
-    authStore.updateUserInfo(updatedUser);
+    const authResponse = await verifyUser(verifyForm);
+    // 实名认证成功，后端返回新的 Token（角色已更新为 verified）
+    // 使用 setAuthData 更新 Token 和用户信息
+    authStore.setAuthData(authResponse);
     ElMessage.success('实名认证成功');
+    // 切换到概览页面，让用户看到已认证状态
+    activeMenu.value = 'overview';
   } catch (error: any) {
     ElMessage.error(error.message || '认证失败');
   } finally {
@@ -712,5 +868,78 @@ onMounted(() => {
   margin-top: 24px;
   display: flex;
   justify-content: center;
+}
+
+/* 资源列表样式 */
+.resources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.resource-card {
+  transition: box-shadow 0.3s;
+}
+
+.resource-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.resource-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.resource-title {
+  margin: 0;
+  font-size: 16px;
+  color: #303133;
+  cursor: pointer;
+}
+
+.resource-title:hover {
+  color: #409eff;
+}
+
+.resource-meta {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.course-name {
+  color: #409eff;
+  font-weight: 500;
+}
+
+.resource-tags {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.resource-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
+}
+
+.resource-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: #909399;
+}
+
+.resource-stats span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 </style>

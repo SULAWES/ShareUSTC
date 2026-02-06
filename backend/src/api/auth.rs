@@ -4,7 +4,7 @@ use crate::models::{LoginRequest, RefreshTokenRequest, RegisterRequest};
 use crate::services::AuthService;
 
 /// 注册
-#[post("/api/auth/register")]
+#[post("/auth/register")]
 pub async fn register(
     state: web::Data<AppState>,
     req: web::Json<RegisterRequest>,
@@ -37,7 +37,7 @@ pub async fn register(
 }
 
 /// 登录
-#[post("/api/auth/login")]
+#[post("/auth/login")]
 pub async fn login(
     state: web::Data<AppState>,
     req: web::Json<LoginRequest>,
@@ -70,7 +70,7 @@ pub async fn login(
 }
 
 /// 刷新 Token
-#[post("/api/auth/refresh")]
+#[post("/auth/refresh")]
 pub async fn refresh(
     state: web::Data<AppState>,
     req: web::Json<RefreshTokenRequest>,
@@ -102,7 +102,7 @@ pub async fn refresh(
 }
 
 /// 登出（此处仅记录，实际Token失效需要在前端处理或使用黑名单）
-#[post("/api/auth/logout")]
+#[post("/auth/logout")]
 pub async fn logout() -> impl Responder {
     log::info!("用户登出");
     HttpResponse::Ok().json(serde_json::json!({

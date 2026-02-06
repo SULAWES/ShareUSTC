@@ -35,7 +35,10 @@ impl UserService {
     /// 获取当前用户信息
     pub async fn get_current_user(pool: &PgPool, user_id: Uuid) -> Result<UserInfo, UserError> {
         let user: User = sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash, email, role, bio, social_links, real_info, is_verified, is_active, created_at, updated_at
+            "SELECT id, username, password_hash, email, role, bio,
+                    CASE WHEN social_links = '{}'::jsonb THEN NULL ELSE social_links END as social_links,
+                    CASE WHEN real_info = '{}'::jsonb THEN NULL ELSE real_info END as real_info,
+                    is_verified, is_active, created_at, updated_at
              FROM users WHERE id = $1 AND is_active = true"
         )
         .bind(user_id)
@@ -51,7 +54,10 @@ impl UserService {
     pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<UserProfileResponse, UserError> {
         // 获取用户基本信息
         let user: User = sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash, email, role, bio, social_links, real_info, is_verified, is_active, created_at, updated_at
+            "SELECT id, username, password_hash, email, role, bio,
+                    CASE WHEN social_links = '{}'::jsonb THEN NULL ELSE social_links END as social_links,
+                    CASE WHEN real_info = '{}'::jsonb THEN NULL ELSE real_info END as real_info,
+                    is_verified, is_active, created_at, updated_at
              FROM users WHERE id = $1 AND is_active = true"
         )
         .bind(user_id)
@@ -176,7 +182,10 @@ impl UserService {
     ) -> Result<UserInfo, UserError> {
         // 获取当前用户
         let user: User = sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash, email, role, bio, social_links, real_info, is_verified, is_active, created_at, updated_at
+            "SELECT id, username, password_hash, email, role, bio,
+                    CASE WHEN social_links = '{}'::jsonb THEN NULL ELSE social_links END as social_links,
+                    CASE WHEN real_info = '{}'::jsonb THEN NULL ELSE real_info END as real_info,
+                    is_verified, is_active, created_at, updated_at
              FROM users WHERE id = $1 AND is_active = true"
         )
         .bind(user_id)

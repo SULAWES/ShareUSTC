@@ -2,7 +2,7 @@ use actix_web::{
     body::MessageBody,
     dev::{Service, ServiceRequest, ServiceResponse, Transform},
     error::ErrorUnauthorized,
-    http::header,
+    http::{header, Method},
     Error, HttpMessage,
 };
 use futures_util::future::LocalBoxFuture;
@@ -15,14 +15,89 @@ use std::{
 use crate::models::CurrentUser;
 use crate::utils::{extract_current_user, verify_token};
 
+/// 公开路径规则
+#[derive(Clone)]
+pub struct PublicPathRule {
+    pub path_prefix: String,
+    pub methods: Vec<Method>,
+    pub exclude_paths: Vec<String>,
+}
+
+impl PublicPathRule {
+    /// 创建允许所有方法的公开路径规则
+    pub fn all_methods(path: &str) -> Self {
+        Self {
+            path_prefix: path.to_string(),
+            methods: vec![],
+            exclude_paths: vec![],
+        }
+    }
+
+    /// 创建只允许特定方法的公开路径规则
+    pub fn with_methods(path: &str, methods: Vec<Method>) -> Self {
+        Self {
+            path_prefix: path.to_string(),
+            methods,
+            exclude_paths: vec![],
+        }
+    }
+
+    /// 设置排除的路径
+    pub fn exclude(mut self, paths: Vec<&str>) -> Self {
+        self.exclude_paths = paths.into_iter().map(|p| p.to_string()).collect();
+        self
+    }
+
+    /// 检查是否匹配
+    pub fn matches(&self, path: &str, method: &Method) -> bool {
+        // 首先检查是否在排除列表中
+        if self.exclude_paths.iter().any(|p| path.starts_with(p)) {
+            return false;
+        }
+
+        if !path.starts_with(&self.path_prefix) {
+            return false;
+        }
+        // 如果没有指定方法，则允许所有方法
+        if self.methods.is_empty() {
+            return true;
+        }
+        self.methods.contains(method)
+    }
+}
+
 /// JWT认证中间件
 pub struct JwtAuth {
     jwt_secret: String,
+    public_paths: Vec<PublicPathRule>,
 }
 
 impl JwtAuth {
     pub fn new(jwt_secret: String) -> Self {
-        Self { jwt_secret }
+        Self {
+            jwt_secret,
+            public_paths: Vec::new(),
+        }
+    }
+
+    /// 添加公开路径（不需要认证）- 向后兼容
+    pub fn with_public_paths(mut self, paths: Vec<String>) -> Self {
+        self.public_paths = paths
+            .into_iter()
+            .map(|p| PublicPathRule::all_methods(&p))
+            .collect();
+        self
+    }
+
+    /// 添加带方法的公开路径规则
+    pub fn with_public_rules(mut self, rules: Vec<PublicPathRule>) -> Self {
+        self.public_paths = rules;
+        self
+    }
+
+    /// 检查路径是否是公开路径
+    fn is_public_path(&self, path: &str, method: &Method) -> bool {
+        self.public_paths.iter().any(|rule| rule.matches(path, method))
     }
 }
 
@@ -42,6 +117,7 @@ where
         ready(Ok(JwtAuthMiddleware {
             service: Rc::new(service),
             jwt_secret: self.jwt_secret.clone(),
+            public_paths: self.public_paths.clone(),
         }))
     }
 }
@@ -49,6 +125,7 @@ where
 pub struct JwtAuthMiddleware<S> {
     service: Rc<S>,
     jwt_secret: String,
+    public_paths: Vec<PublicPathRule>,
 }
 
 impl<S, B> Service<ServiceRequest> for JwtAuthMiddleware<S>
@@ -68,8 +145,19 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let service = self.service.clone();
         let jwt_secret = self.jwt_secret.clone();
+        let public_paths = self.public_paths.clone();
 
         Box::pin(async move {
+            let path = req.path().to_string();
+            let method = req.method().clone();
+
+            // 检查是否是公开路径
+            let is_public = public_paths.iter().any(|rule| rule.matches(&path, &method));
+            if is_public {
+                log::debug!("公开路径，跳过认证: {} {}", method, path);
+                return service.call(req).await;
+            }
+
             // 从请求头中提取Authorization
             let auth_header = req
                 .headers()

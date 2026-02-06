@@ -57,6 +57,24 @@ const routes = [
     component: () => import('../views/ImageHost.vue'),
     meta: { requiresAuth: true }
   },
+  {
+    path: '/upload',
+    name: 'UploadResource',
+    component: () => import('../views/upload/UploadResource.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/resources',
+    name: 'ResourceList',
+    component: () => import('../views/resource/ResourceList.vue'),
+    meta: { public: true }
+  },
+  {
+    path: '/resources/:id',
+    name: 'ResourceDetail',
+    component: () => import('../views/resource/ResourceDetail.vue'),
+    meta: { public: true }
+  },
   // 404 页面
   {
     path: '/:pathMatch(.*)*',

@@ -134,7 +134,11 @@ impl AuthService {
 
         // 查询用户
         let user: User = sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash, email, role, bio, social_links, real_info, is_verified, is_active, created_at, updated_at FROM users WHERE username = $1 AND is_active = true"
+            "SELECT id, username, password_hash, email, role, bio,
+                    CASE WHEN social_links = '{}'::jsonb THEN NULL ELSE social_links END as social_links,
+                    CASE WHEN real_info = '{}'::jsonb THEN NULL ELSE real_info END as real_info,
+                    is_verified, is_active, created_at, updated_at
+             FROM users WHERE username = $1 AND is_active = true"
         )
         .bind(&req.username)
         .fetch_optional(pool)

@@ -20,6 +20,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 rand = "0.8"
 futures-util = "0.3"
+sha2 = "0.10"
 
 [dependencies.sqlx]
 version = "0.7"

@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{middleware::Logger, get, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{http::Method, middleware::Logger, get, web, App, HttpResponse, HttpServer, Responder};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -13,7 +13,7 @@ mod db;
 mod repositories;
 
 use db::AppState;
-use middleware::JwtAuth;
+use middleware::{JwtAuth, PublicPathRule};
 
 #[derive(Serialize)]
 struct HelloResponse {
@@ -109,15 +109,22 @@ async fn main() -> std::io::Result<()> {
     let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-secret-key".to_string());
 
     // 确保上传目录存在
-    let upload_dir = std::env::var("IMAGE_UPLOAD_PATH")
+    let image_upload_dir = std::env::var("IMAGE_UPLOAD_PATH")
         .unwrap_or_else(|_| "./uploads/images".to_string());
-    std::fs::create_dir_all(&upload_dir).unwrap_or_else(|e| {
-        log::warn!("创建上传目录失败: {}", e);
+    std::fs::create_dir_all(&image_upload_dir).unwrap_or_else(|e| {
+        log::warn!("创建图片上传目录失败: {}", e);
+    });
+
+    let resource_upload_dir = std::env::var("RESOURCE_UPLOAD_PATH")
+        .unwrap_or_else(|_| "./uploads/resources".to_string());
+    std::fs::create_dir_all(&resource_upload_dir).unwrap_or_else(|e| {
+        log::warn!("创建资源上传目录失败: {}", e);
     });
 
     log::info!("Starting ShareUSTC backend server...");
     log::info!("Server address: http://{}", server_addr);
-    log::info!("Image upload directory: {}", upload_dir);
+    log::info!("Image upload directory: {}", image_upload_dir);
+    log::info!("Resource upload directory: {}", resource_upload_dir);
 
     // 创建数据库连接池
     let pool = match db::create_pool_from_env().await {
@@ -146,17 +153,33 @@ async fn main() -> std::io::Result<()> {
     log::debug!("  GET  /api/users/me      - 获取当前用户");
     log::debug!("  PUT  /api/users/me      - 更新用户资料");
     log::debug!("  POST /api/users/verify  - 实名认证");
-    log::debug!("  GET  /api/users/:id     - 获取用户资料");
+    log::debug!("  GET  /api/users/{{user_id}} - 获取用户资料");
     log::debug!("  POST /api/images/upload - 上传图片");
     log::debug!("  GET  /api/images        - 获取我的图片列表");
-    log::debug!("  GET  /api/images/:id    - 获取图片信息");
-    log::debug!("  DEL  /api/images/:id    - 删除图片");
-    log::debug!("  GET  /images/:id        - 访问图片文件（公开）");
+    log::debug!("  GET  /api/images/{{id}}   - 获取图片信息");
+    log::debug!("  DEL  /api/images/{{id}}   - 删除图片");
+    log::debug!("  GET  /images/{{id}}       - 访问图片文件（公开）");
+    log::debug!("  POST /api/resources     - 上传资源");
+    log::debug!("  GET  /api/resources     - 获取资源列表");
+    log::debug!("  GET  /api/resources/search - 搜索资源");
+    log::debug!("  GET  /api/resources/my  - 获取我的资源列表");
+    log::debug!("  GET  /api/resources/{{id}} - 获取资源详情");
+    log::debug!("  GET  /api/resources/{{id}}/download - 下载资源");
+    log::debug!("  DEL  /api/resources/{{id}} - 删除资源");
     log::debug!("  GET  /api/health        - 健康检查");
     log::debug!("  GET  /api/hello         - 测试接口");
 
     HttpServer::new(move || {
-        let jwt_auth = JwtAuth::new(jwt_secret.clone());
+        // 配置公开路径规则
+        let public_rules = vec![
+            // /api/auth 全部公开
+            PublicPathRule::all_methods("/api/auth"),
+            // /api/resources GET 方法公开（列表、搜索、详情、下载），但排除 /api/resources/my
+            PublicPathRule::with_methods("/api/resources", vec![Method::GET])
+                .exclude(vec!["/api/resources/my"]),
+        ];
+
+        let jwt_auth = JwtAuth::new(jwt_secret.clone()).with_public_rules(public_rules);
 
         App::new()
             .app_data(app_state.clone())
@@ -171,18 +194,21 @@ async fn main() -> std::io::Result<()> {
             )
             .wrap(Logger::new("%a %t \"%r\" %s %b \"%{Referer}i\" \"%{User-Agent}i\" %T")
                 .log_target("backend::access"))
-            // 公开路由（不需要认证）
-            .configure(api::auth::config)
-            .service(serve_image)
-            .service(health_check)
-            .service(hello)
-            // 需要认证的路由
+            // API 路由（统一使用 /api 前缀，通过中间件控制认证）
+            // 注意：config 必须在 config_public 之前注册，否则 /resources/my 会被 /resources/{id} 匹配
             .service(
                 web::scope("/api")
                     .wrap(jwt_auth)
+                    .configure(api::auth::config)
                     .configure(api::user::config)
                     .configure(api::image_host::config)
+                    .configure(api::resource::config)          // 需要认证的资源路由（先注册）
+                    .configure(api::resource::config_public)  // 公开资源路由（后注册）
             )
+            // 独立的公开服务（非 /api 前缀）
+            .service(serve_image)
+            .service(health_check)
+            .service(hello)
     })
         .bind(&server_addr)?
         .run()

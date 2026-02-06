@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { login, register, refreshToken, logout } from '../api/auth';
+import axios from 'axios';
 import type {
   User,
   LoginRequest,
@@ -14,12 +15,19 @@ const TOKEN_KEY = 'access_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';
 const USER_KEY = 'user';
 
+// 创建一个独立的 axios 实例用于初始化验证（不经过响应拦截器的处理）
+const verifyRequest = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
+  timeout: 5000,
+});
+
 export const useAuthStore = defineStore('auth', () => {
   // State
   const user = ref<User | null>(null);
   const accessToken = ref<string | null>(localStorage.getItem(TOKEN_KEY));
   const refreshTokenValue = ref<string | null>(localStorage.getItem(REFRESH_TOKEN_KEY));
   const isLoading = ref(false);
+  const isAuthChecked = ref(false); // 标记是否已完成认证状态检查
 
   // Getters
   const isAuthenticated = computed(() => !!accessToken.value && !!user.value);
@@ -28,15 +36,112 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Actions
 
-  // 初始化（从 localStorage 恢复）
-  const initialize = () => {
+  // 初始化（从 localStorage 恢复并验证 Token）
+  const initialize = async (): Promise<boolean> => {
+    const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
-    if (storedUser) {
-      try {
-        user.value = JSON.parse(storedUser);
-      } catch (e) {
-        console.error('Failed to parse user from localStorage', e);
+    const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+
+    if (!storedToken || !storedUser) {
+      clearAuth();
+      isAuthChecked.value = true;
+      return false;
+    }
+
+    // 先设置 token（用于 API 调用），但不在 UI 显示用户信息
+    accessToken.value = storedToken;
+    refreshTokenValue.value = storedRefreshToken;
+
+    // 验证 Token 有效性
+    try {
+      // 使用独立实例发送验证请求，避免触发响应拦截器的自动处理
+      const response = await verifyRequest.get('/users/me', {
+        headers: { Authorization: `Bearer ${storedToken}` }
+      });
+
+      if (response.data.code === 200 && response.data.data) {
+        // Token 有效，更新用户信息
+        user.value = response.data.data;
+        localStorage.setItem(USER_KEY, JSON.stringify(response.data.data));
+        console.log('[Auth] Token 验证成功，用户:', response.data.data.username);
+        isAuthChecked.value = true;
+        return true;
+      } else {
+        // 响应格式不正确，保留登录状态
+        console.warn('[Auth] Token 验证响应格式不正确，保留登录状态');
+        isAuthChecked.value = true;
+        return true;
+      }
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        console.warn('[Auth] Access Token 已过期，尝试刷新...');
+        // 立即清除用户信息，避免 UI 上继续显示已登录状态
+        user.value = null;
+
+        // 尝试用 Refresh Token 刷新
+        if (storedRefreshToken) {
+          try {
+            const refreshResponse = await verifyRequest.post('/auth/refresh', {
+              refreshToken: storedRefreshToken
+            });
+
+            if (refreshResponse.data.code === 200 && refreshResponse.data.data) {
+              const { accessToken: newAccessToken, refreshToken: newRefreshToken } = refreshResponse.data.data;
+
+              // 更新 Token
+              accessToken.value = newAccessToken;
+              refreshTokenValue.value = newRefreshToken;
+              localStorage.setItem(TOKEN_KEY, newAccessToken);
+              localStorage.setItem(REFRESH_TOKEN_KEY, newRefreshToken);
+
+              // 用新 Token 获取用户信息
+              const userResponse = await verifyRequest.get('/users/me', {
+                headers: { Authorization: `Bearer ${newAccessToken}` }
+              });
+
+              if (userResponse.data.code === 200 && userResponse.data.data) {
+                user.value = userResponse.data.data;
+                localStorage.setItem(USER_KEY, JSON.stringify(userResponse.data.data));
+                console.log('[Auth] Token 刷新成功，用户:', userResponse.data.data.username);
+                isAuthChecked.value = true;
+                return true;
+              }
+            }
+          } catch (refreshError: any) {
+            console.warn('[Auth] Refresh Token 也已过期');
+            ElMessage.warning('登录已失效，请重新登录');
+          }
+        }
+
+        // 只有确定是 401 且刷新失败时，才清除登录状态
+        console.warn('[Auth] 认证已失效，清除登录状态');
+        user.value = null;
+        accessToken.value = null;
+        refreshTokenValue.value = null;
         clearStorage();
+        ElMessage.warning('登录已失效，请重新登录');
+        isAuthChecked.value = true;
+        return false;
+      } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        // 请求超时，清除登录状态（因为无法确定token是否有效）
+        console.warn('[Auth] Token 验证请求超时，清除登录状态');
+        user.value = null;
+        accessToken.value = null;
+        refreshTokenValue.value = null;
+        clearStorage();
+        ElMessage.warning('登录验证超时，请重新登录');
+        isAuthChecked.value = true;
+        return false;
+      } else {
+        // 其他错误（网络错误、服务器错误等），清除登录状态
+        console.warn('[Auth] Token 验证请求失败:', error.message || error);
+        user.value = null;
+        accessToken.value = null;
+        refreshTokenValue.value = null;
+        clearStorage();
+        ElMessage.warning('登录验证失败，请重新登录');
+        isAuthChecked.value = true;
+        return false;
       }
     }
   };
@@ -149,6 +254,7 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     accessToken,
     isLoading,
+    isAuthChecked,
     isAuthenticated,
     isAdmin,
     isVerified,
@@ -157,6 +263,8 @@ export const useAuthStore = defineStore('auth', () => {
     registerUser,
     refreshAccessToken,
     logoutUser,
+    clearAuth,
+    setAuthData,
     updateUserInfo
   };
 });

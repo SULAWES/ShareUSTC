@@ -1,11 +1,12 @@
 use actix_web::{get, put, post, web, HttpResponse, Responder};
 use crate::db::AppState;
-use crate::models::{CurrentUser, UpdateProfileRequest, VerificationRequest};
+use crate::models::{CurrentUser, UpdateProfileRequest, VerificationRequest, AuthResponse, TokenResponse, UserRole};
 use crate::services::{UserError, UserService};
+use crate::utils::{generate_access_token, generate_refresh_token};
 use uuid::Uuid;
 
 /// 获取当前用户信息
-#[get("/api/users/me")]
+#[get("/users/me")]
 pub async fn get_current_user(
     state: web::Data<AppState>,
     user: web::ReqData<CurrentUser>,
@@ -32,7 +33,7 @@ pub async fn get_current_user(
 }
 
 /// 更新当前用户资料
-#[put("/api/users/me")]
+#[put("/users/me")]
 pub async fn update_profile(
     state: web::Data<AppState>,
     user: web::ReqData<CurrentUser>,
@@ -73,7 +74,7 @@ pub async fn update_profile(
 }
 
 /// 实名认证
-#[post("/api/users/verify")]
+#[post("/users/verify")]
 pub async fn verify_user(
     state: web::Data<AppState>,
     user: web::ReqData<CurrentUser>,
@@ -91,11 +92,58 @@ pub async fn verify_user(
     }
 
     match UserService::verify_user(&state.pool, user.id, req.into_inner()).await {
-        Ok(user_info) => HttpResponse::Ok().json(serde_json::json!({
-            "code": 200,
-            "message": "实名认证成功",
-            "data": user_info
-        })),
+        Ok(user_info) => {
+            // 实名认证成功，生成新的 Token（角色已更新为 verified）
+            let access_token = match generate_access_token(
+                user_info.id,
+                user_info.username.clone(),
+                UserRole::Verified,
+                &state.jwt_secret,
+            ) {
+                Ok(token) => token,
+                Err(e) => {
+                    log::error!("生成访问令牌失败: {}", e);
+                    return HttpResponse::Ok().json(serde_json::json!({
+                        "code": 500,
+                        "message": "认证成功但生成令牌失败，请重新登录",
+                        "data": null
+                    }));
+                }
+            };
+
+            let refresh_token = match generate_refresh_token(
+                user_info.id,
+                user_info.username.clone(),
+                UserRole::Verified,
+                &state.jwt_secret,
+            ) {
+                Ok(token) => token,
+                Err(e) => {
+                    log::error!("生成刷新令牌失败: {}", e);
+                    return HttpResponse::Ok().json(serde_json::json!({
+                        "code": 500,
+                        "message": "认证成功但生成令牌失败，请重新登录",
+                        "data": null
+                    }));
+                }
+            };
+
+            let auth_response = AuthResponse {
+                user: user_info,
+                tokens: TokenResponse {
+                    access_token,
+                    refresh_token,
+                    token_type: "Bearer".to_string(),
+                    expires_in: 15 * 60, // 15分钟
+                },
+            };
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "code": 200,
+                "message": "实名认证成功",
+                "data": auth_response
+            }))
+        }
         Err(e) => {
             log::warn!("实名认证失败: {}", e);
             let (code, message) = match e {
@@ -113,7 +161,7 @@ pub async fn verify_user(
 }
 
 /// 获取用户公开资料
-#[get("/api/users/{user_id}")]
+#[get("/users/{user_id}")]
 pub async fn get_user_profile(
     state: web::Data<AppState>,
     path: web::Path<Uuid>,

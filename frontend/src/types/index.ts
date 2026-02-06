@@ -2,6 +2,7 @@
 
 export * from './auth';
 export * from './image';
+export * from './resource';
 
 export interface ApiResponse<T> {
   code: number;

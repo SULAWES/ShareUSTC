@@ -1,0 +1,160 @@
+import request from './request';
+import type {
+  ResourceListResponse,
+  ResourceListQuery,
+  ResourceSearchQuery,
+  ResourceDetail,
+  UploadResourceRequest,
+  UploadResourceResponse
+} from '../types/resource';
+
+/**
+ * 获取资源列表
+ * @param params 查询参数
+ * @returns 资源列表
+ */
+export const getResourceList = async (params?: ResourceListQuery): Promise<ResourceListResponse> => {
+  return request({
+    url: '/resources',
+    method: 'get',
+    params
+  }) as Promise<ResourceListResponse>;
+};
+
+/**
+ * 搜索资源
+ * @param params 搜索参数
+ * @returns 搜索结果
+ */
+export const searchResources = async (params: ResourceSearchQuery): Promise<ResourceListResponse> => {
+  return request({
+    url: '/resources/search',
+    method: 'get',
+    params
+  }) as Promise<ResourceListResponse>;
+};
+
+/**
+ * 获取资源详情
+ * @param resourceId 资源ID
+ * @returns 资源详情
+ */
+export const getResourceDetail = async (resourceId: string): Promise<ResourceDetail> => {
+  return request({
+    url: `/resources/${resourceId}`,
+    method: 'get'
+  }) as Promise<ResourceDetail>;
+};
+
+/**
+ * 获取我的资源列表
+ * @param params 查询参数
+ * @returns 资源列表
+ */
+export const getMyResources = async (params?: ResourceListQuery): Promise<ResourceListResponse> => {
+  return request({
+    url: '/resources/my',
+    method: 'get',
+    params
+  }) as Promise<ResourceListResponse>;
+};
+
+/**
+ * 上传资源
+ * @param metadata 资源元数据
+ * @param file 文件
+ * @param onProgress 进度回调
+ * @returns 上传结果
+ */
+export const uploadResource = async (
+  metadata: UploadResourceRequest,
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<UploadResourceResponse> => {
+  const formData = new FormData();
+
+  // 添加元数据
+  formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+
+  // 添加文件
+  formData.append('file', file);
+
+  return request({
+    url: '/resources',
+    method: 'post',
+    data: formData,
+    timeout: 120000, // 文件上传需要更长的超时时间（2分钟）
+    onUploadProgress: (progressEvent) => {
+      if (onProgress && progressEvent.total) {
+        const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        onProgress(percent);
+      }
+    }
+  }) as Promise<UploadResourceResponse>;
+};
+
+/**
+ * 删除资源
+ * @param resourceId 资源ID
+ */
+export const deleteResource = async (resourceId: string): Promise<void> => {
+  return request({
+    url: `/resources/${resourceId}`,
+    method: 'delete'
+  }) as Promise<void>;
+};
+
+/**
+ * 下载资源
+ * @param resourceId 资源ID
+ * @param fileName 文件名
+ */
+export const downloadResource = async (resourceId: string, fileName?: string): Promise<void> => {
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/resources/${resourceId}/download`,
+      {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('下载失败');
+    }
+
+    // 获取文件名
+    const contentDisposition = response.headers.get('content-disposition');
+    let downloadFileName = fileName || 'download';
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="(.+)"/);
+      if (match && match[1]) {
+        downloadFileName = match[1];
+      }
+    }
+
+    // 创建下载链接
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = downloadFileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('下载失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 获取资源预览URL
+ * @param resourceId 资源ID
+ * @returns 预览URL
+ */
+export const getResourcePreviewUrl = (resourceId: string): string => {
+  return `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/resources/${resourceId}/download`;
+};
