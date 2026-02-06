@@ -89,11 +89,11 @@
 import { ref, watch, nextTick } from 'vue';
 import { ArrowLeft, ArrowRight, ZoomIn, ZoomOut, FullScreen } from '@element-plus/icons-vue';
 import * as pdfjsLib from 'pdfjs-dist';
+import PDFWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
 import { getResourceContent } from '../../api/resource';
 
-// 设置 PDF.js worker
-// 使用 CDN 版本的 worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+// 设置 PDF.js worker - 使用 Vite 的 worker 导入
+pdfjsLib.GlobalWorkerOptions.workerPort = new PDFWorker();
 
 const props = defineProps<{
   resourceId: string;
@@ -135,10 +135,13 @@ const loadPdf = async () => {
     const loadingTask = pdfjsLib.getDocument({
       data: arrayBuffer,
       useSystemFonts: true,  // 使用系统字体支持中文显示
-      cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/' + pdfjsLib.version + '/cmaps/',
+      cMapUrl: 'https://unpkg.com/pdfjs-dist@' + pdfjsLib.version + '/cmaps/',
       cMapPacked: true,
       disableFontFace: false,  // 启用字体face以更好地支持嵌入式字体
       fontExtraProperties: true,  // 保留额外字体属性
+      // PDF.js 5.x 新增：尝试使用标准字体替代
+      stopAtErrors: false,
+      maxImageSize: 1024 * 1024,
     });
     loadingTask.onProgress = (progress: any) => {
       console.log('[PdfViewer] 加载进度:', progress);

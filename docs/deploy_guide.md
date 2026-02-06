@@ -1,0 +1,96 @@
+# 部署指南
+
+以Ubuntu 25.10为例
+
+
+
+## 安装rust与npm
+
+```bash
+sudo apt install nodejs npm rustup
+```
+
+重启终端以加载环境变量，然后安装rust相关的包：
+
+```bash
+rustup-init
+rustup default stable
+```
+
+
+
+## 安装与初始化数据库
+
+首先在**根目录**打开终端
+
+安装postgresql：
+
+```bash
+sudo apt install postgresql
+```
+
+登录到postgres管理员用户：
+
+```bash
+sudo -u postgres psql
+```
+
+创建软件所使用数据库与用户：
+
+```sql
+-- 创建用户
+CREATE USER shareustc_app WITH PASSWORD 'ShareUSTC_default_pwd';
+
+-- 创建数据库
+CREATE DATABASE shareustc
+    WITH 
+    OWNER = shareustc_app
+    ENCODING = 'UTF8'
+    LC_COLLATE = 'en_US.UTF-8'
+    LC_CTYPE = 'en_US.UTF-8'
+    TEMPLATE = template0;
+
+-- 授予权限
+GRANT ALL PRIVILEGES ON DATABASE shareustc TO shareustc_app;
+
+-- 退出
+\q
+```
+
+执行数据库初始化脚本：
+
+```bash
+./scripts/db_init_tables.sh
+```
+
+
+
+## 启动前后端服务
+
+在根目录下开启一个终端，然后执行：
+
+```bash
+cd frontend/
+npm run dev
+```
+
+在根目录下开启另一个终端，然后执行：
+
+```bash
+cd backend/
+cp .env.example .env
+cargo run
+```
+
+
+
+## 开始使用
+
+[http://localhost:5173](http://localhost:5173)
+
+
+
+## 注意
+
+在生产环境请修改postgresql数据库用户`shareustc_app`的密码，并同步修改`./backend/.env`中填入的密码
+
