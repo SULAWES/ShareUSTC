@@ -5,8 +5,58 @@ import type {
   ResourceSearchQuery,
   ResourceDetail,
   UploadResourceRequest,
-  UploadResourceResponse
+  UploadResourceResponse,
+  ConfirmResourceUploadRequest
 } from '../types/resource';
+
+interface ApiResponse<T> {
+  code: number;
+  message: string;
+  data: T | null;
+}
+
+interface ResourceDownloadUrlData {
+  downloadUrl: string;
+  fileName: string;
+  expiresIn: number;
+}
+
+interface ResourceContentUrlData {
+  contentUrl: string;
+  resourceType: string;
+  expiresIn: number;
+}
+
+const getBaseUrl = (): string => {
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+  return baseUrl.replace(/\/api$/, '');
+};
+
+const getAuthHeaders = (): HeadersInit => {
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    return {};
+  }
+  return {
+    Authorization: `Bearer ${token}`
+  };
+};
+
+const isJsonResponse = (response: Response): boolean => {
+  const contentType = response.headers.get('content-type') || '';
+  return contentType.includes('application/json');
+};
+
+const parseApiResponse = async <T>(response: Response): Promise<T> => {
+  const payload = await response.json() as ApiResponse<T>;
+  if (payload.code !== 200) {
+    throw new Error(payload.message || '请求失败');
+  }
+  if (payload.data === null) {
+    throw new Error(payload.message || '响应数据为空');
+  }
+  return payload.data;
+};
 
 /**
  * 获取资源列表
@@ -94,6 +144,21 @@ export const uploadResource = async (
 };
 
 /**
+ * 确认 OSS 上传资源
+ * @param payload OSS 上传确认数据
+ * @returns 上传结果
+ */
+export const confirmUpload = async (
+  payload: ConfirmResourceUploadRequest
+): Promise<UploadResourceResponse> => {
+  return request({
+    url: '/resources/confirm',
+    method: 'post',
+    data: payload
+  }) as Promise<UploadResourceResponse>;
+};
+
+/**
  * 删除资源
  * @param resourceId 资源ID
  */
@@ -111,20 +176,29 @@ export const deleteResource = async (resourceId: string): Promise<void> => {
  */
 export const downloadResource = async (resourceId: string, fileName?: string): Promise<void> => {
   try {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
-    // 确保 baseUrl 不以 /api 结尾
-    const cleanBaseUrl = baseUrl.replace(/\/api$/, '');
     const response = await fetch(
-      `${cleanBaseUrl}/api/resources/${resourceId}/download`,
+      `${getBaseUrl()}/api/resources/${resourceId}/download`,
       {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
-        }
+        headers: getAuthHeaders()
       }
     );
 
     if (!response.ok) {
-      throw new Error('下载失败');
+      throw new Error(`下载失败 (${response.status})`);
+    }
+
+    // OSS 场景：返回 JSON，包含签名 URL
+    if (isJsonResponse(response)) {
+      const data = await parseApiResponse<ResourceDownloadUrlData>(response);
+      const link = document.createElement('a');
+      link.href = data.downloadUrl;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      return;
     }
 
     // 获取文件名
@@ -159,9 +233,7 @@ export const downloadResource = async (resourceId: string, fileName?: string): P
  * @returns 预览URL
  */
 export const getResourcePreviewUrl = (resourceId: string): string => {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
-  const cleanBaseUrl = baseUrl.replace(/\/api$/, '');
-  return `${cleanBaseUrl}/api/resources/${resourceId}/content`;
+  return `${getBaseUrl()}/api/resources/${resourceId}/content`;
 };
 
 /**
@@ -170,27 +242,30 @@ export const getResourcePreviewUrl = (resourceId: string): string => {
  * @returns Blob 文件内容
  */
 export const getResourceContent = async (resourceId: string): Promise<Blob> => {
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
-  // 确保 baseUrl 不以 /api 结尾，避免重复
-  const cleanBaseUrl = baseUrl.replace(/\/api$/, '');
   const response = await fetch(
-    `${cleanBaseUrl}/api/resources/${resourceId}/content`,
+    `${getBaseUrl()}/api/resources/${resourceId}/content`,
     {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
-      }
+      headers: getAuthHeaders()
     }
   );
 
   if (!response.ok) {
-    throw new Error('获取资源内容失败');
+    throw new Error(`获取资源内容失败 (${response.status})`);
   }
 
-  // 获取响应的 Content-Type
-  const contentType = response.headers.get('content-type') || 'application/octet-stream';
-  console.log('[getResourceContent] Content-Type:', contentType);
+  // OSS 场景：先获取签名 URL，再请求真实文件内容
+  if (isJsonResponse(response)) {
+    const data = await parseApiResponse<ResourceContentUrlData>(response);
+    const signedResponse = await fetch(data.contentUrl);
+    if (!signedResponse.ok) {
+      throw new Error(`获取预览内容失败 (${signedResponse.status})`);
+    }
+    const blob = await signedResponse.blob();
+    return new Blob([blob], { type: blob.type || 'application/octet-stream' });
+  }
 
+  // 本地兼容场景：后端直接返回二进制
+  const contentType = response.headers.get('content-type') || 'application/octet-stream';
   const blob = await response.blob();
-  // 创建带有正确 MIME 类型的 Blob
   return new Blob([blob], { type: contentType });
 };

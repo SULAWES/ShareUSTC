@@ -52,7 +52,10 @@ impl UserService {
     }
 
     /// 获取用户公开资料
-    pub async fn get_user_profile(pool: &PgPool, user_id: Uuid) -> Result<UserProfileResponse, UserError> {
+    pub async fn get_user_profile(
+        pool: &PgPool,
+        user_id: Uuid,
+    ) -> Result<UserProfileResponse, UserError> {
         // 获取用户基本信息
         let user: User = sqlx::query_as::<_, User>(
             "SELECT id, username, password_hash, email, role, bio,
@@ -68,19 +71,18 @@ impl UserService {
         .ok_or_else(|| UserError::UserNotFound("用户不存在".to_string()))?;
 
         // 获取用户上传的资源数量
-        let uploads_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM resources WHERE uploader_id = $1"
-        )
-        .bind(user_id)
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
+        let uploads_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM resources WHERE uploader_id = $1")
+                .bind(user_id)
+                .fetch_one(pool)
+                .await
+                .unwrap_or(0);
 
         // 获取总点赞数
         let total_likes: i64 = sqlx::query_scalar(
             "SELECT COALESCE(SUM(likes), 0) FROM resource_stats rs
              JOIN resources r ON rs.resource_id = r.id
-             WHERE r.uploader_id = $1"
+             WHERE r.uploader_id = $1",
         )
         .bind(user_id)
         .fetch_one(pool)
@@ -91,7 +93,7 @@ impl UserService {
         let total_downloads: i64 = sqlx::query_scalar(
             "SELECT COALESCE(SUM(downloads), 0) FROM resource_stats rs
              JOIN resources r ON rs.resource_id = r.id
-             WHERE r.uploader_id = $1"
+             WHERE r.uploader_id = $1",
         )
         .bind(user_id)
         .fetch_one(pool)
@@ -118,13 +120,12 @@ impl UserService {
         req: UpdateProfileRequest,
     ) -> Result<UserInfo, UserError> {
         // 验证请求
-        req.validate()
-            .map_err(|e| UserError::ValidationError(e))?;
+        req.validate().map_err(|e| UserError::ValidationError(e))?;
 
         // 检查用户名是否已被使用
         if let Some(ref username) = req.username {
             let existing: Option<(Uuid,)> = sqlx::query_as(
-                "SELECT id FROM users WHERE username = $1 AND id != $2 AND is_active = true"
+                "SELECT id FROM users WHERE username = $1 AND id != $2 AND is_active = true",
             )
             .bind(username)
             .bind(user_id)
@@ -133,9 +134,7 @@ impl UserService {
             .map_err(|e| UserError::DatabaseError(e.to_string()))?;
 
             if existing.is_some() {
-                return Err(UserError::UserExists(
-                    "用户名已被使用".to_string()
-                ));
+                return Err(UserError::UserExists("用户名已被使用".to_string()));
             }
         }
 

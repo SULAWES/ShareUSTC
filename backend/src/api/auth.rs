@@ -1,7 +1,7 @@
-use actix_web::{post, web, HttpResponse, Responder};
 use crate::db::AppState;
 use crate::models::{LoginRequest, RefreshTokenRequest, RegisterRequest};
 use crate::services::AuthService;
+use actix_web::{post, web, HttpResponse, Responder};
 
 /// 注册
 #[post("/auth/register")]
@@ -38,10 +38,7 @@ pub async fn register(
 
 /// 登录
 #[post("/auth/login")]
-pub async fn login(
-    state: web::Data<AppState>,
-    req: web::Json<LoginRequest>,
-) -> impl Responder {
+pub async fn login(state: web::Data<AppState>, req: web::Json<LoginRequest>) -> impl Responder {
     log::debug!("收到登录请求: username={}", req.username);
 
     match AuthService::login(&state.pool, &state.jwt_secret, req.into_inner()).await {

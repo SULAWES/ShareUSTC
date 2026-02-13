@@ -31,9 +31,7 @@ pub async fn upload_image(
         };
 
         let content_disposition = field.content_disposition();
-        let field_name = content_disposition
-            .get_name()
-            .unwrap_or("unknown");
+        let field_name = content_disposition.get_name().unwrap_or("unknown");
 
         if field_name == "image" {
             // 获取文件名
@@ -78,14 +76,8 @@ pub async fn upload_image(
     };
 
     // 调用服务上传图片
-    match ImageService::upload_image(
-        &state.pool,
-        &user,
-        &filename,
-        data,
-        mime_type.as_deref(),
-    )
-    .await
+    match ImageService::upload_image(&state.pool, &user, &filename, data, mime_type.as_deref())
+        .await
     {
         Ok(response) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
@@ -99,6 +91,36 @@ pub async fn upload_image(
                 ImageError::FileError(msg) => (500, msg),
                 ImageError::DatabaseError(msg) => (500, msg),
                 _ => (500, "上传失败".to_string()),
+            };
+            HttpResponse::Ok().json(serde_json::json!({
+                "code": code,
+                "message": message,
+                "data": null
+            }))
+        }
+    }
+}
+
+/// 确认 OSS 图片上传
+#[post("/images/confirm")]
+pub async fn confirm_image_upload(
+    state: web::Data<AppState>,
+    user: web::ReqData<CurrentUser>,
+    request: web::Json<crate::models::image::ConfirmImageUploadRequest>,
+) -> impl Responder {
+    match ImageService::confirm_image(&state.pool, &user, request.into_inner()).await {
+        Ok(response) => HttpResponse::Ok().json(serde_json::json!({
+            "code": 200,
+            "message": "上传确认成功",
+            "data": response
+        })),
+        Err(e) => {
+            log::warn!("确认图片上传失败: {}", e);
+            let (code, message) = match e {
+                ImageError::ValidationError(msg) => (400, msg),
+                ImageError::NotFound(msg) => (404, msg),
+                ImageError::Unauthorized(msg) => (403, msg),
+                ImageError::FileError(msg) | ImageError::DatabaseError(msg) => (500, msg),
             };
             HttpResponse::Ok().json(serde_json::json!({
                 "code": code,
@@ -138,10 +160,7 @@ pub async fn get_my_images(
 
 /// 获取单张图片信息
 #[get("/images/{image_id}")]
-pub async fn get_image_info(
-    state: web::Data<AppState>,
-    path: web::Path<Uuid>,
-) -> impl Responder {
+pub async fn get_image_info(state: web::Data<AppState>, path: web::Path<Uuid>) -> impl Responder {
     let image_id = path.into_inner();
 
     match ImageService::get_image_by_id(&state.pool, image_id).await {
@@ -174,7 +193,7 @@ pub async fn delete_image(
 ) -> impl Responder {
     let image_id = path.into_inner();
 
-    match ImageService::delete_image(&state.pool, &user, image_id).await {
+    match ImageService::delete_image(&state.pool, &state.oss_config, &user, image_id).await {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
             "message": "删除成功",
@@ -206,6 +225,7 @@ pub struct ImageListQuery {
 /// 配置图床路由
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(upload_image)
+        .service(confirm_image_upload)
         .service(get_my_images)
         .service(get_image_info)
         .service(delete_image);

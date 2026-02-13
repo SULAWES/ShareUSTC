@@ -1,8 +1,10 @@
-use actix_web::{get, put, post, web, HttpResponse, Responder};
 use crate::db::AppState;
-use crate::models::{CurrentUser, UpdateProfileRequest, VerificationRequest, AuthResponse, TokenResponse, UserRole};
+use crate::models::{
+    AuthResponse, CurrentUser, TokenResponse, UpdateProfileRequest, UserRole, VerificationRequest,
+};
 use crate::services::{UserError, UserService};
 use crate::utils::{generate_access_token, generate_refresh_token};
+use actix_web::{get, post, put, web, HttpResponse, Responder};
 use uuid::Uuid;
 
 /// 获取当前用户信息
@@ -11,11 +13,20 @@ pub async fn get_current_user(
     state: web::Data<AppState>,
     user: web::ReqData<CurrentUser>,
 ) -> impl Responder {
-    log::info!("获取当前用户信息: user_id={}, username={}, role={}", user.id, user.username, user.role.to_string());
+    log::info!(
+        "获取当前用户信息: user_id={}, username={}, role={}",
+        user.id,
+        user.username,
+        user.role.to_string()
+    );
 
     match UserService::get_current_user(&state.pool, user.id).await {
         Ok(user_info) => {
-            log::info!("返回用户信息: username={}, role={}", user_info.username, user_info.role);
+            log::info!(
+                "返回用户信息: username={}, role={}",
+                user_info.username,
+                user_info.role
+            );
             HttpResponse::Ok().json(serde_json::json!({
                 "code": 200,
                 "message": "获取成功",
@@ -45,8 +56,7 @@ pub async fn update_profile(
     req: web::Json<UpdateProfileRequest>,
 ) -> impl Responder {
     // 检查是否为实名用户（只有实名用户可以修改资料）
-    if user.role != crate::models::UserRole::Verified
-        && user.role != crate::models::UserRole::Admin
+    if user.role != crate::models::UserRole::Verified && user.role != crate::models::UserRole::Admin
     {
         return HttpResponse::Ok().json(serde_json::json!({
             "code": 403,

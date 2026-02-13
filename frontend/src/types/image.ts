@@ -30,3 +30,10 @@ export interface ImageListQuery {
   page?: number;
   perPage?: number;
 }
+
+export interface ConfirmImageUploadRequest {
+  ossKey: string;
+  originalFileName: string;
+  fileSize: number;
+  mimeType?: string;
+}

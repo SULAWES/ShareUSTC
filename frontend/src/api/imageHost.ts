@@ -1,5 +1,11 @@
 import request from './request';
-import type { Image, ImageUploadResponse, ImageListResponse, ImageListQuery } from '../types/image';
+import type {
+  ConfirmImageUploadRequest,
+  Image,
+  ImageUploadResponse,
+  ImageListResponse,
+  ImageListQuery
+} from '../types/image';
 
 /**
  * 上传图片
@@ -27,6 +33,21 @@ export const uploadImage = async (
         onProgress(percent);
       }
     }
+  }) as Promise<ImageUploadResponse>;
+};
+
+/**
+ * 确认 OSS 图片上传
+ * @param payload 上传确认参数
+ * @returns 上传结果
+ */
+export const confirmImageUpload = async (
+  payload: ConfirmImageUploadRequest
+): Promise<ImageUploadResponse> => {
+  return request({
+    url: '/images/confirm',
+    method: 'post',
+    data: payload
   }) as Promise<ImageUploadResponse>;
 };
 

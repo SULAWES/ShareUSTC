@@ -5,11 +5,27 @@ use uuid::Uuid;
 
 use crate::db::AppState;
 use crate::models::{
-    resource::*,
-    CreateRatingRequest, CreateCommentRequest, CommentListQuery,
-    CurrentUser,
+    resource::*, CommentListQuery, CreateCommentRequest, CreateRatingRequest, CurrentUser,
 };
-use crate::services::{ResourceService, RatingService, LikeService, CommentService};
+use crate::services::{
+    CommentService, LikeService, OssError, OssService, RatingService, ResourceService,
+};
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResourceDownloadUrlResponse {
+    download_url: String,
+    file_name: String,
+    expires_in: u64,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResourceContentUrlResponse {
+    content_url: String,
+    resource_type: String,
+    expires_in: u64,
+}
 
 /// 上传资源
 #[post("/resources")]
@@ -36,9 +52,7 @@ pub async fn upload_resource(
         };
 
         let content_disposition = field.content_disposition();
-        let field_name = content_disposition
-            .get_name()
-            .unwrap_or("unknown");
+        let field_name = content_disposition.get_name().unwrap_or("unknown");
 
         match field_name {
             "metadata" => {
@@ -154,7 +168,42 @@ pub async fn upload_resource(
                 crate::services::ResourceError::DatabaseError(msg) => {
                     log::error!("数据库错误详情: {}", msg);
                     (500, format!("数据库错误: {}", msg))
-                },
+                }
+                crate::services::ResourceError::AiError(msg) => (500, msg),
+                crate::services::ResourceError::NotFound(msg) => (404, msg),
+                crate::services::ResourceError::Unauthorized(msg) => (403, msg),
+            };
+            HttpResponse::Ok().json(serde_json::json!({
+                "code": code,
+                "message": message,
+                "data": null
+            }))
+        }
+    }
+}
+
+/// 确认 OSS 上传资源
+#[post("/resources/confirm")]
+pub async fn confirm_upload(
+    state: web::Data<AppState>,
+    user: web::ReqData<CurrentUser>,
+    request: web::Json<ConfirmResourceUploadRequest>,
+) -> impl Responder {
+    match ResourceService::confirm_upload(&state.pool, &user, request.into_inner()).await {
+        Ok(response) => HttpResponse::Ok().json(serde_json::json!({
+            "code": 200,
+            "message": "上传确认成功",
+            "data": response
+        })),
+        Err(e) => {
+            log::warn!("确认上传资源失败: {}", e);
+            let (code, message) = match e {
+                crate::services::ResourceError::ValidationError(msg) => (400, msg),
+                crate::services::ResourceError::FileError(msg) => (500, msg),
+                crate::services::ResourceError::DatabaseError(msg) => {
+                    log::error!("数据库错误详情: {}", msg);
+                    (500, format!("数据库错误: {}", msg))
+                }
                 crate::services::ResourceError::AiError(msg) => (500, msg),
                 crate::services::ResourceError::NotFound(msg) => (404, msg),
                 crate::services::ResourceError::Unauthorized(msg) => (403, msg),
@@ -237,15 +286,15 @@ pub async fn get_resource_detail(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    // 增加浏览量
-    let _ = ResourceService::increment_views(&state.pool, resource_id).await;
-
     match ResourceService::get_resource_detail(&state.pool, resource_id).await {
-        Ok(response) => HttpResponse::Ok().json(serde_json::json!({
-            "code": 200,
-            "message": "获取成功",
-            "data": response
-        })),
+        Ok(response) => {
+            let _ = ResourceService::increment_views(&state.pool, resource_id).await;
+            HttpResponse::Ok().json(serde_json::json!({
+                "code": 200,
+                "message": "获取成功",
+                "data": response
+            }))
+        }
         Err(e) => {
             log::warn!("获取资源详情失败: {}", e);
             let (code, message) = match e {
@@ -270,7 +319,8 @@ pub async fn delete_resource(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    match ResourceService::delete_resource(&state.pool, &user, resource_id).await {
+    match ResourceService::delete_resource(&state.pool, &state.oss_config, &user, resource_id).await
+    {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
             "message": "删除成功",
@@ -332,32 +382,80 @@ pub async fn download_resource(
     // 获取资源文件路径
     match ResourceService::get_resource_file_path(&state.pool, resource_id).await {
         Ok((file_path, resource_type)) => {
+            // 获取下载上下文
+            let user_id = user.as_ref().map(|u| u.id);
+            let ip_address = req
+                .peer_addr()
+                .map(|addr| addr.ip().to_string())
+                .unwrap_or_else(|| "0.0.0.0".to_string());
+
+            // OSS Key 场景：返回签名 URL（新流程）
+            if is_oss_resource_key(&file_path) {
+                const EXPIRES_IN_SECS: u64 = 1800;
+                match OssService::generate_presigned_url(
+                    &state.oss_config,
+                    file_path.as_str(),
+                    EXPIRES_IN_SECS,
+                ) {
+                    Ok(download_url) => {
+                        let _ =
+                            ResourceService::increment_downloads(&state.pool, resource_id).await;
+                        let _ = ResourceService::record_download(
+                            &state.pool,
+                            resource_id,
+                            user_id,
+                            &ip_address,
+                        )
+                        .await;
+
+                        let file_name = std::path::Path::new(file_path.as_str())
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("download")
+                            .to_string();
+                        let data = ResourceDownloadUrlResponse {
+                            download_url,
+                            file_name,
+                            expires_in: EXPIRES_IN_SECS,
+                        };
+
+                        return HttpResponse::Ok().json(serde_json::json!({
+                            "code": 200,
+                            "message": "获取下载链接成功",
+                            "data": data
+                        }));
+                    }
+                    Err(err) => {
+                        log::warn!("生成资源签名 URL 失败: {}", err);
+                        let (code, message) = map_oss_error(err);
+                        return HttpResponse::Ok().json(serde_json::json!({
+                            "code": code,
+                            "message": message,
+                            "data": null
+                        }));
+                    }
+                }
+            }
+
             // 读取文件
             match crate::services::FileService::read_resource_file(&file_path).await {
                 Ok(file_content) => {
                     // 增加下载次数
                     let _ = ResourceService::increment_downloads(&state.pool, resource_id).await;
 
-                    // 记录下载日志
-                    let user_id = user.as_ref().map(|u| u.id);
-
-                    // 获取真实 IP 地址
-                    let ip_address = req
-                        .peer_addr()
-                        .map(|addr| addr.ip().to_string())
-                        .unwrap_or_else(|| "0.0.0.0".to_string());
-
                     // 调用 Service 层记录下载日志
                     let _ = ResourceService::record_download(
                         &state.pool,
                         resource_id,
                         user_id,
-                        &ip_address
-                    ).await;
+                        &ip_address,
+                    )
+                    .await;
 
                     // 设置 Content-Type 和 Content-Disposition
                     // 使用 resource_type 获取 MIME 类型，因为它更准确
-                    let content_type = crate::services::FileService::get_mime_type_by_type(&resource_type);
+                    let content_type =
+                        crate::services::FileService::get_mime_type_by_type(&resource_type);
                     let filename = std::path::Path::new(&file_path)
                         .file_name()
                         .and_then(|n| n.to_str())
@@ -396,6 +494,21 @@ pub async fn download_resource(
     }
 }
 
+fn is_oss_resource_key(file_path: &str) -> bool {
+    let normalized = file_path.trim().trim_start_matches('/');
+    normalized.starts_with("resources/")
+}
+
+fn map_oss_error(err: OssError) -> (i32, String) {
+    match err {
+        OssError::ValidationError(msg) => (400, msg),
+        OssError::ConfigError(msg) => (500, msg),
+        OssError::RequestError(msg) => (502, msg),
+        OssError::ServiceError(msg) => (502, msg),
+        OssError::NotImplemented(msg) => (501, msg),
+    }
+}
+
 /// 获取资源文件内容（用于预览）
 #[get("/resources/{resource_id}/content")]
 pub async fn get_resource_content(
@@ -407,14 +520,52 @@ pub async fn get_resource_content(
     // 获取资源文件路径（预览不检查审核状态）
     match ResourceService::get_resource_file_path_for_preview(&state.pool, resource_id).await {
         Ok((file_path, resource_type)) => {
+            // OSS Key 场景：返回签名 URL（新流程）
+            if is_oss_resource_key(&file_path) {
+                const EXPIRES_IN_SECS: u64 = 1800;
+                return match OssService::generate_presigned_url(
+                    &state.oss_config,
+                    file_path.as_str(),
+                    EXPIRES_IN_SECS,
+                ) {
+                    Ok(content_url) => {
+                        let data = ResourceContentUrlResponse {
+                            content_url,
+                            resource_type: resource_type.clone(),
+                            expires_in: EXPIRES_IN_SECS,
+                        };
+                        HttpResponse::Ok().json(serde_json::json!({
+                            "code": 200,
+                            "message": "获取预览链接成功",
+                            "data": data
+                        }))
+                    }
+                    Err(err) => {
+                        log::warn!("生成资源预览签名 URL 失败: {}", err);
+                        let (code, message) = map_oss_error(err);
+                        HttpResponse::Ok().json(serde_json::json!({
+                            "code": code,
+                            "message": message,
+                            "data": null
+                        }))
+                    }
+                };
+            }
+
             // 读取文件
             match crate::services::FileService::read_resource_file(&file_path).await {
                 Ok(file_content) => {
                     // 获取 MIME 类型 - 优先使用 resource_type，因为它更准确
-                    let content_type = crate::services::FileService::get_mime_type_by_type(&resource_type);
+                    let content_type =
+                        crate::services::FileService::get_mime_type_by_type(&resource_type);
 
-                    log::debug!("预览资源 {}: 文件路径={}, 类型={}, MIME={}",
-                        resource_id, file_path, resource_type, content_type);
+                    log::debug!(
+                        "预览资源 {}: 文件路径={}, 类型={}, MIME={}",
+                        resource_id,
+                        file_path,
+                        resource_type,
+                        content_type
+                    );
 
                     // 返回文件内容（inline 显示，不是下载）
                     HttpResponse::Ok()
@@ -454,8 +605,8 @@ pub fn config_public(cfg: &mut web::ServiceConfig) {
         .service(get_resource_detail)
         .service(download_resource)
         .service(get_resource_content)
-        .service(get_like_status)  // 获取点赞状态（支持未登录用户）
-        .service(get_comments);    // 获取评论列表（公开）
+        .service(get_like_status) // 获取点赞状态（支持未登录用户）
+        .service(get_comments); // 获取评论列表（公开）
 }
 
 /// 提交评分
@@ -468,7 +619,14 @@ pub async fn rate_resource(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    match RatingService::create_or_update_rating(&state.pool, resource_id, user.id, request.into_inner()).await {
+    match RatingService::create_or_update_rating(
+        &state.pool,
+        resource_id,
+        user.id,
+        request.into_inner(),
+    )
+    .await
+    {
         Ok(rating) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
             "message": "评分成功",
@@ -653,7 +811,9 @@ pub async fn create_comment(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    match CommentService::create_comment(&state.pool, resource_id, user.id, request.into_inner()).await {
+    match CommentService::create_comment(&state.pool, resource_id, user.id, request.into_inner())
+        .await
+    {
         Ok(comment) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
             "message": "评论成功",
@@ -678,6 +838,7 @@ pub async fn create_comment(
 /// 配置资源路由（需要认证）
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(upload_resource)
+        .service(confirm_upload)
         .service(delete_resource)
         .service(get_my_resources)
         .service(rate_resource)

@@ -140,7 +140,9 @@ pub async fn dismiss_priority_notification(
 ) -> impl Responder {
     let notification_id = path.into_inner();
 
-    match NotificationService::dismiss_priority_notification(&state.pool, notification_id, user.id).await {
+    match NotificationService::dismiss_priority_notification(&state.pool, notification_id, user.id)
+        .await
+    {
         Ok(true) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
             "message": "关闭成功",

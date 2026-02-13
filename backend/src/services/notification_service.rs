@@ -170,10 +170,7 @@ impl NotificationService {
     }
 
     /// 标记所有通知为已读
-    pub async fn mark_all_as_read(
-        pool: &PgPool,
-        user_id: Uuid,
-    ) -> Result<i64, ResourceError> {
+    pub async fn mark_all_as_read(pool: &PgPool, user_id: Uuid) -> Result<i64, ResourceError> {
         let result = sqlx::query(
             r#"
             UPDATE notifications
@@ -277,7 +274,10 @@ impl NotificationService {
         let request = CreateNotificationRequest {
             recipient_id: Some(uploader_id),
             title: "您的资源收到新评论".to_string(),
-            content: format!("用户 {} 评论了您的资源《{}》", commenter_name, resource_title),
+            content: format!(
+                "用户 {} 评论了您的资源《{}》",
+                commenter_name, resource_title
+            ),
             notification_type: NotificationType::CommentReply,
             priority: NotificationPriority::Normal,
             link_url: Some(format!("/resource/{}", resource_id)),

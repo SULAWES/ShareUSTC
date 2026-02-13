@@ -21,6 +21,10 @@ uuid = { version = "1", features = ["v4", "serde"] }
 rand = "0.8"
 futures-util = "0.3"
 sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+hmac = "0.12"
+base64 = "0.22"
+sha1 = "0.10"
 
 [dependencies.sqlx]
 version = "0.8"

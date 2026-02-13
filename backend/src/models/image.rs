@@ -1,5 +1,5 @@
 use chrono::NaiveDateTime;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -51,6 +51,34 @@ pub struct ImageListResponse {
     pub per_page: i32,
 }
 
+/// 图片上传确认请求 DTO（OSS 直传后调用）
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmImageUploadRequest {
+    pub oss_key: String,
+    pub original_file_name: String,
+    pub file_size: i64,
+    pub mime_type: Option<String>,
+}
+
+impl ConfirmImageUploadRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.oss_key.trim().is_empty() {
+            return Err("ossKey 不能为空".to_string());
+        }
+        if self.original_file_name.trim().is_empty() {
+            return Err("originalFileName 不能为空".to_string());
+        }
+        if self.original_file_name.len() > 255 {
+            return Err("originalFileName 不能超过255个字符".to_string());
+        }
+        if self.file_size <= 0 {
+            return Err("fileSize 必须大于 0".to_string());
+        }
+        Ok(())
+    }
+}
+
 impl Image {
     /// 生成图片的公开访问URL
     pub fn get_public_url(&self, base_url: &str) -> String {
@@ -65,13 +93,16 @@ impl Image {
 
 impl From<Image> for ImageInfoResponse {
     fn from(image: Image) -> Self {
-        let base_url = std::env::var("IMAGE_BASE_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+        let base_url =
+            std::env::var("IMAGE_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
 
         ImageInfoResponse {
             id: image.id,
             url: image.get_public_url(&base_url),
-            markdown_link: image.get_markdown_link(&base_url, &image.original_name.as_deref().unwrap_or("image")),
+            markdown_link: image.get_markdown_link(
+                &base_url,
+                &image.original_name.as_deref().unwrap_or("image"),
+            ),
             original_name: image.original_name.clone(),
             file_size: image.file_size,
             mime_type: image.mime_type.clone(),

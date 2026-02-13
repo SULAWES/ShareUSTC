@@ -143,6 +143,19 @@ export interface UploadResourceResponse {
   createdAt: string;
 }
 
+// OSS 资源上传确认请求
+export interface ConfirmResourceUploadRequest {
+  ossKey: string;
+  originalFileName: string;
+  fileSize: number;
+  title: string;
+  courseName?: string;
+  resourceType: ResourceTypeType;
+  category: ResourceCategoryType;
+  tags?: string[];
+  description?: string;
+}
+
 // 资源类型显示名称映射（用于显示单个资源的类型）
 export const ResourceTypeLabels: Record<ResourceTypeType, string> = {
   [ResourceType.WebMarkdown]: '网页 Markdown',

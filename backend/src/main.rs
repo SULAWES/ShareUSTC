@@ -1,15 +1,15 @@
 use actix_cors::Cors;
-use actix_web::{http::Method, middleware::Logger, get, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, middleware::Logger, web, App, HttpResponse, HttpServer, Responder};
 use serde::Serialize;
 use uuid::Uuid;
 
-mod config;
 mod api;
-mod models;
-mod utils;
-mod services;
-mod middleware;
+mod config;
 mod db;
+mod middleware;
+mod models;
+mod services;
+mod utils;
 
 use config::Config;
 use db::AppState;
@@ -24,9 +24,8 @@ struct HelloResponse {
 #[get("/api/hello")]
 async fn hello(data: web::Data<AppState>) -> impl Responder {
     // 测试数据库连接
-    let result: Result<(i32,), sqlx::Error> = sqlx::query_as("SELECT 1")
-        .fetch_one(&data.pool)
-        .await;
+    let result: Result<(i32,), sqlx::Error> =
+        sqlx::query_as("SELECT 1").fetch_one(&data.pool).await;
 
     let db_status = match result {
         Ok(_) => "connected",
@@ -49,15 +48,32 @@ async fn health_check() -> impl Responder {
 
 /// 获取图片文件（公开访问）
 #[get("/images/{image_id}")]
-async fn serve_image(
-    data: web::Data<AppState>,
-    path: web::Path<Uuid>,
-) -> impl Responder {
+async fn serve_image(data: web::Data<AppState>, path: web::Path<Uuid>) -> impl Responder {
     let image_id = path.into_inner();
 
     // 从数据库获取图片路径
     match services::ImageService::get_image_path(&data.pool, image_id).await {
         Ok((file_path, mime_type)) => {
+            if is_oss_image_key(&file_path) {
+                return match services::OssService::generate_presigned_url(
+                    &data.oss_config,
+                    file_path.as_str(),
+                    1800,
+                ) {
+                    Ok(url) => HttpResponse::Found()
+                        .append_header(("Location", url))
+                        .finish(),
+                    Err(e) => {
+                        log::warn!("生成图片签名 URL 失败: {}", e);
+                        HttpResponse::Ok().json(serde_json::json!({
+                            "code": 502,
+                            "message": "获取图片访问链接失败",
+                            "data": null
+                        }))
+                    }
+                };
+            }
+
             match tokio::fs::read(&file_path).await {
                 Ok(file_content) => {
                     // 根据MIME类型设置Content-Type
@@ -91,6 +107,11 @@ async fn serve_image(
     }
 }
 
+fn is_oss_image_key(file_path: &str) -> bool {
+    let normalized = file_path.trim().trim_start_matches('/');
+    normalized.starts_with("images/")
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // 加载环境变量
@@ -100,9 +121,8 @@ async fn main() -> std::io::Result<()> {
     let config = Config::from_env();
 
     // 初始化日志系统
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or(&config.log_level)
-    ).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&config.log_level))
+        .init();
 
     // 构建服务器地址
     let server_addr = format!("{}:{}", config.server_host, config.server_port);
@@ -119,6 +139,14 @@ async fn main() -> std::io::Result<()> {
     log::info!("Server address: http://{}", server_addr);
     log::info!("Image upload directory: {}", config.image_upload_path);
     log::info!("Resource upload directory: {}", config.resource_upload_path);
+    log::info!(
+        "OSS configured: {}",
+        if config.oss.is_configured() {
+            "yes"
+        } else {
+            "no"
+        }
+    );
 
     // 创建数据库连接池
     let pool = match db::create_pool_from_env().await {
@@ -135,7 +163,11 @@ async fn main() -> std::io::Result<()> {
     };
 
     // 创建应用状态
-    let app_state = web::Data::new(AppState::new(pool, config.jwt_secret.clone()));
+    let app_state = web::Data::new(AppState::new(
+        pool,
+        config.jwt_secret.clone(),
+        config.oss.clone(),
+    ));
 
     log::info!("Server starting at http://{}", server_addr);
     log::debug!("Debug logging enabled");
@@ -152,6 +184,7 @@ async fn main() -> std::io::Result<()> {
     log::debug!("  GET  /api/images        - 获取我的图片列表");
     log::debug!("  GET  /api/images/{{id}}   - 获取图片信息");
     log::debug!("  DEL  /api/images/{{id}}   - 删除图片");
+    log::debug!("  POST /api/oss/sts-token - 获取 OSS 临时凭证");
     log::debug!("  GET  /images/{{id}}       - 访问图片文件（公开）");
     log::debug!("  POST /api/resources     - 上传资源");
     log::debug!("  GET  /api/resources     - 获取资源列表");
@@ -171,9 +204,8 @@ async fn main() -> std::io::Result<()> {
         let public_rules = vec![
             // /api/auth 全部公开
             PublicPathRule::all_methods("/api/auth"),
-            // /api/resources GET 方法公开（列表、搜索、详情、下载），但排除 /api/resources/my
-            PublicPathRule::with_methods("/api/resources", vec![Method::GET])
-                .exclude(vec!["/api/resources/my"]),
+            // /api/resources 公开 GET 白名单（避免将 /rate 等受保护接口误暴露）
+            PublicPathRule::resource_public_gets(),
         ];
 
         let jwt_auth = JwtAuth::new(jwt_secret.clone()).with_public_rules(public_rules);
@@ -187,10 +219,9 @@ async fn main() -> std::io::Result<()> {
                     .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
                     .allowed_headers(vec!["Content-Type", "Authorization", "Accept"])
                     .supports_credentials()
-                    .max_age(3600)
+                    .max_age(3600),
             )
-            .wrap(Logger::new("%a %r %s %b %Dms")
-                .log_target("backend::access"))
+            .wrap(Logger::new("%a %r %s %b %Dms").log_target("backend::access"))
             // API 路由（统一使用 /api 前缀，通过中间件控制认证）
             // 注意：config 必须在 config_public 之前注册，否则 /resources/my 会被 /resources/{id} 匹配
             .service(
@@ -199,18 +230,19 @@ async fn main() -> std::io::Result<()> {
                     .configure(api::auth::config)
                     .configure(api::user::config)
                     .configure(api::image_host::config)
-                    .configure(api::comment::config)          // 评论路由
-                    .configure(api::notification::config)     // 通知路由
-                    .configure(api::admin::config)            // 管理后台路由
-                    .configure(api::resource::config)          // 需要认证的资源路由（先注册）
-                    .configure(api::resource::config_public)  // 公开资源路由（后注册）
+                    .configure(api::oss::config)
+                    .configure(api::comment::config) // 评论路由
+                    .configure(api::notification::config) // 通知路由
+                    .configure(api::admin::config) // 管理后台路由
+                    .configure(api::resource::config) // 需要认证的资源路由（先注册）
+                    .configure(api::resource::config_public), // 公开资源路由（后注册）
             )
             // 独立的公开服务（非 /api 前缀）
             .service(serve_image)
             .service(health_check)
             .service(hello)
     })
-        .bind(&server_addr)?
-        .run()
-        .await
+    .bind(&server_addr)?
+    .run()
+    .await
 }

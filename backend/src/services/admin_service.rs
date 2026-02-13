@@ -132,10 +132,11 @@ impl AdminService {
     /// 获取仪表盘统计数据
     pub async fn get_dashboard_stats(pool: &PgPool) -> Result<DashboardStats, AdminError> {
         // 用户总数
-        let total_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE is_active = true")
-            .fetch_one(pool)
-            .await
-            .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+        let total_users: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE is_active = true")
+                .fetch_one(pool)
+                .await
+                .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
         // 资源总数
         let total_resources: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM resources")
@@ -150,32 +151,29 @@ impl AdminService {
             .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
         // 待审核资源数
-        let pending_resources: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM resources WHERE audit_status = 'pending'"
-        )
-        .fetch_one(pool)
-        .await
-        .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+        let pending_resources: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM resources WHERE audit_status = 'pending'")
+                .fetch_one(pool)
+                .await
+                .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
         // 待审核评论数
-        let pending_comments: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM comments WHERE audit_status = 'pending'"
-        )
-        .fetch_one(pool)
-        .await
-        .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+        let pending_comments: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM comments WHERE audit_status = 'pending'")
+                .fetch_one(pool)
+                .await
+                .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
         // 今日新增用户
-        let today_new_users: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM users WHERE DATE(created_at) = CURRENT_DATE"
-        )
-        .fetch_one(pool)
-        .await
-        .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+        let today_new_users: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE DATE(created_at) = CURRENT_DATE")
+                .fetch_one(pool)
+                .await
+                .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
         // 今日新增资源
         let today_new_resources: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM resources WHERE DATE(created_at) = CURRENT_DATE"
+            "SELECT COUNT(*) FROM resources WHERE DATE(created_at) = CURRENT_DATE",
         )
         .fetch_one(pool)
         .await
@@ -214,7 +212,7 @@ impl AdminService {
             FROM users u
             ORDER BY u.created_at DESC
             LIMIT $1 OFFSET $2
-            "#
+            "#,
         )
         .bind(per_page as i64)
         .bind(offset as i64)
@@ -242,14 +240,13 @@ impl AdminService {
         user_id: Uuid,
         is_active: bool,
     ) -> Result<(), AdminError> {
-        let result = sqlx::query(
-            "UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2"
-        )
-        .bind(is_active)
-        .bind(user_id)
-        .execute(pool)
-        .await
-        .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+        let result =
+            sqlx::query("UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2")
+                .bind(is_active)
+                .bind(user_id)
+                .execute(pool)
+                .await
+                .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
         if result.rows_affected() == 0 {
             return Err(AdminError::NotFound("用户不存在".to_string()));
@@ -284,7 +281,7 @@ impl AdminService {
             WHERE r.audit_status = 'pending'
             ORDER BY r.created_at DESC
             LIMIT $1 OFFSET $2
-            "#
+            "#,
         )
         .bind(per_page as i64)
         .bind(offset as i64)
@@ -293,12 +290,11 @@ impl AdminService {
         .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
         // 获取总数
-        let total: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM resources WHERE audit_status = 'pending'"
-        )
-        .fetch_one(pool)
-        .await
-        .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+        let total: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM resources WHERE audit_status = 'pending'")
+                .fetch_one(pool)
+                .await
+                .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
         Ok(PendingResourceListResponse {
             resources,
@@ -318,7 +314,7 @@ impl AdminService {
         // 验证状态值
         if status != "approved" && status != "rejected" {
             return Err(AdminError::ValidationError(
-                "状态必须是 approved 或 rejected".to_string()
+                "状态必须是 approved 或 rejected".to_string(),
             ));
         }
 
@@ -329,7 +325,7 @@ impl AdminService {
                 ai_reject_reason = $2,
                 updated_at = NOW()
             WHERE id = $3
-            "#
+            "#,
         )
         .bind(&status)
         .bind(reason)
@@ -370,12 +366,10 @@ impl AdminService {
             JOIN users u ON c.user_id = u.id
             JOIN resources r ON c.resource_id = r.id
             WHERE 1=1
-            "#
+            "#,
         );
 
-        let mut count_query = String::from(
-            "SELECT COUNT(*) FROM comments c WHERE 1=1"
-        );
+        let mut count_query = String::from("SELECT COUNT(*) FROM comments c WHERE 1=1");
 
         // 添加审核状态筛选
         if let Some(ref _status) = audit_status {
@@ -426,10 +420,7 @@ impl AdminService {
     }
 
     /// 删除评论
-    pub async fn delete_comment(
-        pool: &PgPool,
-        comment_id: Uuid,
-    ) -> Result<(), AdminError> {
+    pub async fn delete_comment(pool: &PgPool, comment_id: Uuid) -> Result<(), AdminError> {
         let result = sqlx::query("DELETE FROM comments WHERE id = $1")
             .bind(comment_id)
             .execute(pool)
@@ -452,18 +443,16 @@ impl AdminService {
     ) -> Result<(), AdminError> {
         if status != "approved" && status != "rejected" {
             return Err(AdminError::ValidationError(
-                "状态必须是 approved 或 rejected".to_string()
+                "状态必须是 approved 或 rejected".to_string(),
             ));
         }
 
-        let result = sqlx::query(
-            "UPDATE comments SET audit_status = $1 WHERE id = $2"
-        )
-        .bind(&status)
-        .bind(comment_id)
-        .execute(pool)
-        .await
-        .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+        let result = sqlx::query("UPDATE comments SET audit_status = $1 WHERE id = $2")
+            .bind(&status)
+            .bind(comment_id)
+            .execute(pool)
+            .await
+            .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
 
         if result.rows_affected() == 0 {
             return Err(AdminError::NotFound("评论不存在".to_string()));

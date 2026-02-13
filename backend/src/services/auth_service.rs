@@ -1,8 +1,10 @@
 use crate::models::{
-    AuthResponse, LoginRequest, RefreshTokenRequest, RegisterRequest, TokenResponse,
-    UserInfo, UserRole, User,
+    AuthResponse, LoginRequest, RefreshTokenRequest, RegisterRequest, TokenResponse, User,
+    UserInfo, UserRole,
 };
-use crate::utils::{generate_access_token, generate_refresh_token, hash_password, verify_password, verify_token};
+use crate::utils::{
+    generate_access_token, generate_refresh_token, hash_password, verify_password, verify_token,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -44,27 +46,23 @@ impl AuthService {
         req: RegisterRequest,
     ) -> Result<AuthResponse, AuthError> {
         // 验证请求
-        req.validate()
-            .map_err(|e| AuthError::ValidationError(e))?;
+        req.validate().map_err(|e| AuthError::ValidationError(e))?;
 
         // 检查用户名是否已存在
-        let existing_user: Option<(Uuid,)> = sqlx::query_as(
-            "SELECT id FROM users WHERE username = $1 AND is_active = true"
-        )
-        .bind(&req.username)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
+        let existing_user: Option<(Uuid,)> =
+            sqlx::query_as("SELECT id FROM users WHERE username = $1 AND is_active = true")
+                .bind(&req.username)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| AuthError::DatabaseError(e.to_string()))?;
 
         if existing_user.is_some() {
-            return Err(AuthError::UserExists(
-                "用户名已被使用".to_string()
-            ));
+            return Err(AuthError::UserExists("用户名已被使用".to_string()));
         }
 
         // 哈希密码
-        let password_hash = hash_password(&req.password)
-            .map_err(|e| AuthError::ValidationError(e))?;
+        let password_hash =
+            hash_password(&req.password).map_err(|e| AuthError::ValidationError(e))?;
 
         // 创建用户
         let user_id = Uuid::new_v4();
@@ -111,14 +109,9 @@ impl AuthService {
         )
         .map_err(|e| AuthError::TokenInvalid(e))?;
 
-        let refresh_token = generate_refresh_token(
-            user_id,
-            req.username.clone(),
-            user_role,
-            false,
-            jwt_secret,
-        )
-        .map_err(|e| AuthError::TokenInvalid(e))?;
+        let refresh_token =
+            generate_refresh_token(user_id, req.username.clone(), user_role, false, jwt_secret)
+                .map_err(|e| AuthError::TokenInvalid(e))?;
 
         Ok(AuthResponse {
             user: UserInfo {
@@ -146,8 +139,7 @@ impl AuthService {
         req: LoginRequest,
     ) -> Result<AuthResponse, AuthError> {
         // 验证请求
-        req.validate()
-            .map_err(|e| AuthError::ValidationError(e))?;
+        req.validate().map_err(|e| AuthError::ValidationError(e))?;
 
         // 查询用户
         let user: User = sqlx::query_as::<_, User>(
@@ -170,7 +162,7 @@ impl AuthService {
         if !valid {
             log::warn!("登录失败，密码错误: {}", req.username);
             return Err(AuthError::InvalidCredentials(
-                "用户名或密码错误".to_string()
+                "用户名或密码错误".to_string(),
             ));
         }
 

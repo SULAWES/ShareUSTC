@@ -1,37 +1,68 @@
 import request from './request';
+import type {
+  AdminCommentListResponse,
+  AdminUserListResponse,
+  DashboardStats,
+  PendingResourceListResponse
+} from '../types/admin';
 
 /**
  * 管理员API封装
  */
 
 // 仪表盘统计
-export const getDashboardStats = () => {
-  return request.get('/admin/dashboard');
+export const getDashboardStats = async (): Promise<DashboardStats> => {
+  return request({
+    url: '/admin/dashboard',
+    method: 'get'
+  }) as Promise<DashboardStats>;
 };
 
 // 用户管理
-export const getUserList = (page: number = 1, perPage: number = 20) => {
-  return request.get('/admin/users', {
+export const getUserList = async (
+  page: number = 1,
+  perPage: number = 20
+): Promise<AdminUserListResponse> => {
+  return request({
+    url: '/admin/users',
+    method: 'get',
     params: { page, perPage }
-  });
+  }) as Promise<AdminUserListResponse>;
 };
 
-export const updateUserStatus = (userId: string, isActive: boolean) => {
-  return request.put(`/admin/users/${userId}/status`, { isActive });
+export const updateUserStatus = async (
+  userId: string,
+  isActive: boolean
+): Promise<void> => {
+  return request({
+    url: `/admin/users/${userId}/status`,
+    method: 'put',
+    data: { isActive }
+  }) as Promise<void>;
 };
 
 // 资源审核
-export const getPendingResources = (page: number = 1, perPage: number = 20) => {
-  return request.get('/admin/resources/pending', {
+export const getPendingResources = async (
+  page: number = 1,
+  perPage: number = 20
+): Promise<PendingResourceListResponse> => {
+  return request({
+    url: '/admin/resources/pending',
+    method: 'get',
     params: { page, perPage }
-  });
+  }) as Promise<PendingResourceListResponse>;
 };
 
-export const auditResource = (resourceId: string, status: string, reason?: string) => {
-  return request.put(`/admin/resources/${resourceId}/audit`, {
-    status,
-    reason
-  });
+export const auditResource = async (
+  resourceId: string,
+  status: 'approved' | 'rejected',
+  reason?: string
+): Promise<void> => {
+  return request({
+    url: `/admin/resources/${resourceId}/audit`,
+    method: 'put',
+    data: { status, reason }
+  }) as Promise<void>;
 };
 
 // 评论管理
@@ -39,20 +70,34 @@ export const getCommentList = (
   page: number = 1,
   perPage: number = 20,
   auditStatus?: string
-) => {
-  const params: Record<string, any> = { page, perPage };
+): Promise<AdminCommentListResponse> => {
+  const params: Record<string, string | number> = { page, perPage };
   if (auditStatus) {
     params.auditStatus = auditStatus;
   }
-  return request.get('/admin/comments', { params });
+  return request({
+    url: '/admin/comments',
+    method: 'get',
+    params
+  }) as Promise<AdminCommentListResponse>;
 };
 
-export const deleteComment = (commentId: string) => {
-  return request.delete(`/admin/comments/${commentId}`);
+export const deleteComment = async (commentId: string): Promise<void> => {
+  return request({
+    url: `/admin/comments/${commentId}`,
+    method: 'delete'
+  }) as Promise<void>;
 };
 
-export const auditComment = (commentId: string, status: string) => {
-  return request.put(`/admin/comments/${commentId}/audit`, { status });
+export const auditComment = async (
+  commentId: string,
+  status: 'approved' | 'rejected'
+): Promise<void> => {
+  return request({
+    url: `/admin/comments/${commentId}/audit`,
+    method: 'put',
+    data: { status }
+  }) as Promise<void>;
 };
 
 // 导出API对象

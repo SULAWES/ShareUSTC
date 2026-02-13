@@ -1,10 +1,15 @@
+use crate::config::OssConfig;
 use crate::models::{
-    image::{Image, ImageInfoResponse, ImageListResponse, UploadImageResponse},
+    image::{
+        ConfirmImageUploadRequest, Image, ImageInfoResponse, ImageListResponse, UploadImageResponse,
+    },
     CurrentUser,
 };
 use sqlx::PgPool;
 use std::path::Path;
 use uuid::Uuid;
+
+use super::{OssError, OssService};
 
 #[derive(Debug)]
 pub enum ImageError {
@@ -28,6 +33,8 @@ impl std::fmt::Display for ImageError {
 }
 
 impl std::error::Error for ImageError {}
+
+const MAX_IMAGE_SIZE: usize = 5 * 1024 * 1024;
 
 pub struct ImageService;
 
@@ -59,13 +66,10 @@ impl ImageService {
                 )));
             }
         } else {
-            return Err(ImageError::ValidationError(
-                "无法识别文件类型".to_string(),
-            ));
+            return Err(ImageError::ValidationError("无法识别文件类型".to_string()));
         }
 
-        const MAX_FILE_SIZE: usize = 5 * 1024 * 1024;
-        if file_data.len() > MAX_FILE_SIZE {
+        if file_data.len() > MAX_IMAGE_SIZE {
             return Err(ImageError::ValidationError(format!(
                 "文件大小超过限制。最大允许 5MB，当前 {}MB",
                 file_data.len() / 1024 / 1024
@@ -76,8 +80,8 @@ impl ImageService {
         let ext = file_extension.unwrap_or_else(|| "png".to_string());
         let storage_filename = format!("{}.{}", image_id, ext);
 
-        let upload_dir = std::env::var("IMAGE_UPLOAD_PATH")
-            .unwrap_or_else(|_| "./uploads/images".to_string());
+        let upload_dir =
+            std::env::var("IMAGE_UPLOAD_PATH").unwrap_or_else(|_| "./uploads/images".to_string());
         let file_path = Path::new(&upload_dir).join(&storage_filename);
 
         if let Some(parent) = file_path.parent() {
@@ -109,10 +113,96 @@ impl ImageService {
         .await
         .map_err(|e| ImageError::DatabaseError(e.to_string()))?;
 
-        let base_url = std::env::var("IMAGE_BASE_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+        let base_url =
+            std::env::var("IMAGE_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
         let url = image.get_public_url(&base_url);
         let markdown_link = image.get_markdown_link(&base_url, file_name);
+
+        Ok(UploadImageResponse {
+            id: image.id,
+            url,
+            markdown_link,
+            original_name: image.original_name,
+            file_size: image.file_size,
+            created_at: image.created_at,
+        })
+    }
+
+    pub async fn confirm_image(
+        pool: &PgPool,
+        user: &CurrentUser,
+        request: ConfirmImageUploadRequest,
+    ) -> Result<UploadImageResponse, ImageError> {
+        request.validate().map_err(ImageError::ValidationError)?;
+
+        let oss_key = request.oss_key.trim().trim_start_matches('/').to_string();
+        if oss_key.len() > 500 {
+            return Err(ImageError::ValidationError(
+                "ossKey 长度不能超过500个字符".to_string(),
+            ));
+        }
+        if !is_oss_image_key(&oss_key) {
+            return Err(ImageError::ValidationError(
+                "ossKey 必须以 images/ 开头".to_string(),
+            ));
+        }
+
+        let file_size: usize = usize::try_from(request.file_size)
+            .map_err(|_| ImageError::ValidationError("fileSize 无效".to_string()))?;
+        if file_size > MAX_IMAGE_SIZE {
+            return Err(ImageError::ValidationError(format!(
+                "文件大小超过限制。最大允许 5MB，当前 {}MB",
+                file_size / 1024 / 1024
+            )));
+        }
+        let file_size_i32 = i32::try_from(request.file_size)
+            .map_err(|_| ImageError::ValidationError("fileSize 超出范围".to_string()))?;
+
+        let ext = Path::new(&oss_key)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .ok_or_else(|| ImageError::ValidationError("ossKey 缺少扩展名".to_string()))?;
+        let detected_mime = match ext.as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            _ => {
+                return Err(ImageError::ValidationError(
+                    "仅支持 JPEG/JPG/PNG 图片".to_string(),
+                ))
+            }
+        };
+
+        if let Some(mime) = request.mime_type.as_ref() {
+            if mime != detected_mime && !(mime == "image/jpg" && detected_mime == "image/jpeg") {
+                return Err(ImageError::ValidationError(
+                    "mimeType 与 ossKey 扩展名不一致".to_string(),
+                ));
+            }
+        }
+
+        let image_id = Uuid::new_v4();
+        let image: Image = sqlx::query_as::<_, Image>(
+            r#"
+            INSERT INTO images (id, uploader_id, file_path, original_name, file_size, mime_type)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+            "#,
+        )
+        .bind(image_id)
+        .bind(user.id)
+        .bind(oss_key)
+        .bind(&request.original_file_name)
+        .bind(file_size_i32)
+        .bind(detected_mime)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| ImageError::DatabaseError(e.to_string()))?;
+
+        let base_url =
+            std::env::var("IMAGE_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+        let url = image.get_public_url(&base_url);
+        let markdown_link = image.get_markdown_link(&base_url, &request.original_file_name);
 
         Ok(UploadImageResponse {
             id: image.id,
@@ -132,13 +222,12 @@ impl ImageService {
     ) -> Result<ImageListResponse, ImageError> {
         let offset = (page - 1) * per_page;
 
-        let total: i64 = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM images WHERE uploader_id = $1",
-        )
-        .bind(user_id)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| ImageError::DatabaseError(e.to_string()))?;
+        let total: i64 =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM images WHERE uploader_id = $1")
+                .bind(user_id)
+                .fetch_one(pool)
+                .await
+                .map_err(|e| ImageError::DatabaseError(e.to_string()))?;
 
         let images: Vec<Image> = sqlx::query_as::<_, Image>(
             r#"
@@ -155,10 +244,8 @@ impl ImageService {
         .await
         .map_err(|e| ImageError::DatabaseError(e.to_string()))?;
 
-        let image_responses: Vec<ImageInfoResponse> = images
-            .into_iter()
-            .map(ImageInfoResponse::from)
-            .collect();
+        let image_responses: Vec<ImageInfoResponse> =
+            images.into_iter().map(ImageInfoResponse::from).collect();
 
         Ok(ImageListResponse {
             images: image_responses,
@@ -172,43 +259,44 @@ impl ImageService {
         pool: &PgPool,
         image_id: Uuid,
     ) -> Result<ImageInfoResponse, ImageError> {
-        let image: Image = sqlx::query_as::<_, Image>(
-            "SELECT * FROM images WHERE id = $1",
-        )
-        .bind(image_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| ImageError::DatabaseError(e.to_string()))?
-        .ok_or_else(|| ImageError::NotFound(format!("图片 {} 不存在", image_id)))?;
+        let image: Image = sqlx::query_as::<_, Image>("SELECT * FROM images WHERE id = $1")
+            .bind(image_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| ImageError::DatabaseError(e.to_string()))?
+            .ok_or_else(|| ImageError::NotFound(format!("图片 {} 不存在", image_id)))?;
 
         Ok(ImageInfoResponse::from(image))
     }
 
     pub async fn delete_image(
         pool: &PgPool,
+        oss_config: &OssConfig,
         user: &CurrentUser,
         image_id: Uuid,
     ) -> Result<(), ImageError> {
-        let image: Image = sqlx::query_as::<_, Image>(
-            "SELECT * FROM images WHERE id = $1",
-        )
-        .bind(image_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| ImageError::DatabaseError(e.to_string()))?
-        .ok_or_else(|| ImageError::NotFound(format!("图片 {} 不存在", image_id)))?;
+        let image: Image = sqlx::query_as::<_, Image>("SELECT * FROM images WHERE id = $1")
+            .bind(image_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| ImageError::DatabaseError(e.to_string()))?
+            .ok_or_else(|| ImageError::NotFound(format!("图片 {} 不存在", image_id)))?;
 
         if image.uploader_id != user.id && user.role != crate::models::UserRole::Admin {
-            return Err(ImageError::Unauthorized(
-                "没有权限删除此图片".to_string(),
-            ));
+            return Err(ImageError::Unauthorized("没有权限删除此图片".to_string()));
         }
 
-        let file_path = Path::new(&image.file_path);
-        if file_path.exists() {
-            tokio::fs::remove_file(file_path)
+        if is_oss_image_key(&image.file_path) {
+            OssService::delete_object(oss_config, &image.file_path)
                 .await
-                .map_err(|e| ImageError::FileError(format!("删除文件失败: {}", e)))?;
+                .map_err(map_oss_error)?;
+        } else {
+            let file_path = Path::new(&image.file_path);
+            if file_path.exists() {
+                tokio::fs::remove_file(file_path)
+                    .await
+                    .map_err(|e| ImageError::FileError(format!("删除文件失败: {}", e)))?;
+            }
         }
 
         sqlx::query("DELETE FROM images WHERE id = $1")
@@ -224,15 +312,29 @@ impl ImageService {
         pool: &PgPool,
         image_id: Uuid,
     ) -> Result<(String, Option<String>), ImageError> {
-        let row: (String, Option<String>) = sqlx::query_as(
-            "SELECT file_path, mime_type FROM images WHERE id = $1",
-        )
-        .bind(image_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| ImageError::DatabaseError(e.to_string()))?
-        .ok_or_else(|| ImageError::NotFound(format!("图片 {} 不存在", image_id)))?;
+        let row: (String, Option<String>) =
+            sqlx::query_as("SELECT file_path, mime_type FROM images WHERE id = $1")
+                .bind(image_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ImageError::DatabaseError(e.to_string()))?
+                .ok_or_else(|| ImageError::NotFound(format!("图片 {} 不存在", image_id)))?;
 
         Ok(row)
+    }
+}
+
+fn is_oss_image_key(file_path: &str) -> bool {
+    let normalized = file_path.trim().trim_start_matches('/');
+    normalized.starts_with("images/")
+}
+
+fn map_oss_error(err: OssError) -> ImageError {
+    match err {
+        OssError::ValidationError(msg) => ImageError::ValidationError(msg),
+        OssError::ConfigError(msg) => ImageError::FileError(msg),
+        OssError::RequestError(msg) => ImageError::FileError(msg),
+        OssError::ServiceError(msg) => ImageError::FileError(msg),
+        OssError::NotImplemented(msg) => ImageError::FileError(msg),
     }
 }

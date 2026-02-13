@@ -81,8 +81,8 @@ impl ResourceType {
     /// 获取支持的文件扩展名列表
     pub fn supported_extensions() -> Vec<&'static str> {
         vec![
-            "md", "markdown", "ppt", "pptx", "doc", "docx",
-            "pdf", "txt", "jpeg", "jpg", "png", "zip",
+            "md", "markdown", "ppt", "pptx", "doc", "docx", "pdf", "txt", "jpeg", "jpg", "png",
+            "zip",
         ]
     }
 
@@ -106,9 +106,13 @@ impl ResourceType {
         match self {
             ResourceType::WebMarkdown => "text/markdown",
             ResourceType::Ppt => "application/vnd.ms-powerpoint",
-            ResourceType::Pptx => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ResourceType::Pptx => {
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            }
             ResourceType::Doc => "application/msword",
-            ResourceType::Docx => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ResourceType::Docx => {
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
             ResourceType::Pdf => "application/pdf",
             ResourceType::Txt => "text/plain",
             ResourceType::Jpeg => "image/jpeg",
@@ -244,6 +248,67 @@ pub struct UploadResourceRequest {
 impl UploadResourceRequest {
     /// 验证上传请求
     pub fn validate(&self) -> Result<(), String> {
+        // 标题验证
+        if self.title.trim().is_empty() {
+            return Err("资源标题不能为空".to_string());
+        }
+        if self.title.len() > 255 {
+            return Err("资源标题不能超过255个字符".to_string());
+        }
+
+        // 标签验证（如果提供）
+        if let Some(tags) = &self.tags {
+            if tags.len() > 10 {
+                return Err("标签数量不能超过10个".to_string());
+            }
+            for tag in tags {
+                if tag.len() > 50 {
+                    return Err("单个标签不能超过50个字符".to_string());
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// OSS 资源上传确认请求 DTO
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConfirmResourceUploadRequest {
+    pub oss_key: String,
+    pub original_file_name: String,
+    pub file_size: i64,
+    pub title: String,
+    pub course_name: Option<String>,
+    pub resource_type: ResourceType,
+    pub category: ResourceCategory,
+    pub tags: Option<Vec<String>>,
+    #[allow(dead_code)]
+    pub description: Option<String>,
+}
+
+impl ConfirmResourceUploadRequest {
+    /// 验证上传确认请求
+    pub fn validate(&self) -> Result<(), String> {
+        // OSS Key 验证
+        if self.oss_key.trim().is_empty() {
+            return Err("ossKey 不能为空".to_string());
+        }
+
+        // 原始文件名验证
+        if self.original_file_name.trim().is_empty() {
+            return Err("originalFileName 不能为空".to_string());
+        }
+        if self.original_file_name.len() > 255 {
+            return Err("originalFileName 不能超过255个字符".to_string());
+        }
+
+        // 文件大小验证
+        if self.file_size <= 0 {
+            return Err("fileSize 必须大于 0".to_string());
+        }
+
         // 标题验证
         if self.title.trim().is_empty() {
             return Err("资源标题不能为空".to_string());

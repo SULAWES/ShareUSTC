@@ -10,7 +10,7 @@
       <el-steps :active="currentStep" finish-status="success" simple class="upload-steps">
         <el-step title="选择文件" />
         <el-step title="填写信息" />
-        <el-step title="AI审核" />
+        <el-step title="上传处理" />
         <el-step title="完成" />
       </el-steps>
 
@@ -57,7 +57,7 @@
         </div>
       </div>
 
-      <!-- 步骤3: AI审核 -->
+      <!-- 步骤3: 上传处理 -->
       <div v-if="currentStep === 2" class="step-content">
         <div class="ai-audit-status">
           <el-icon v-if="auditStatus === 'checking'" class="audit-icon is-loading"><Loading /></el-icon>
@@ -70,7 +70,7 @@
           <!-- 审核进度条 -->
           <div v-if="auditStatus === 'checking'" class="audit-progress">
             <el-progress :percentage="uploadProgress" :stroke-width="8" />
-            <p class="progress-text">正在上传和审核...</p>
+            <p class="progress-text">正在上传，请稍候...</p>
           </div>
         </div>
 
@@ -98,7 +98,7 @@
         <div class="upload-success">
           <el-icon class="success-icon"><CircleCheck /></el-icon>
           <h3>上传成功！</h3>
-          <p>资源已通过AI审核并发布</p>
+          <p>资源已上传并发布</p>
 
           <div class="success-actions">
             <el-button type="primary" size="large" @click="goToResourceDetail">
@@ -120,7 +120,7 @@
       <ul>
         <li>支持上传：PDF、PPT、PPTX、DOC、DOCX、TXT、Markdown、图片、ZIP等格式</li>
         <li>单个文件大小限制：100MB</li>
-        <li>资源需经过AI审核，违规内容将被拒绝</li>
+        <li>资源上传后会进行状态校验，异常内容可能被拦截</li>
         <li>请确保上传资源不侵犯他人版权</li>
         <li>优质资源将获得更多曝光和下载</li>
       </ul>
@@ -141,7 +141,8 @@ import {
 } from '@element-plus/icons-vue';
 import FileUploader from '../../components/upload/FileUploader.vue';
 import MetadataForm from '../../components/upload/MetadataForm.vue';
-import { uploadResource } from '../../api/resource';
+import { confirmUpload } from '../../api/resource';
+import { ossUpload } from '../../utils/ossUpload';
 import {
   formatFileSize,
   getResourceTypeFromFileName,
@@ -188,11 +189,11 @@ const detectedResourceType = computed<ResourceTypeType>(() => {
 const auditStatusText = computed(() => {
   switch (auditStatus.value) {
     case 'checking':
-      return 'AI 正在审核资源...';
+      return '正在上传资源...';
     case 'passed':
-      return 'AI 审核通过！';
+      return '上传成功！';
     case 'rejected':
-      return 'AI 审核未通过';
+      return '上传失败';
     default:
       return '';
   }
@@ -219,9 +220,22 @@ const handleUpload = async () => {
   uploadProgress.value = 0;
   auditStatus.value = 'checking';
   currentStep.value = 2;
+  let uploadStage: 'uploading_oss' | 'confirming' = 'uploading_oss';
 
   try {
+    const uploadResult = await ossUpload({
+      file: selectedFile.value,
+      prefix: 'resources',
+      onProgress: (progress) => {
+        uploadProgress.value = progress;
+      }
+    });
+    uploadStage = 'confirming';
+
     const request = {
+      ossKey: uploadResult.ossKey,
+      originalFileName: uploadResult.fileName,
+      fileSize: uploadResult.fileSize,
       title: metadata.value.title,
       courseName: metadata.value.courseName || undefined,
       resourceType: detectedResourceType.value,
@@ -230,17 +244,11 @@ const handleUpload = async () => {
       description: metadata.value.description || undefined
     };
 
-    const response = await uploadResource(
-      request,
-      selectedFile.value,
-      (progress) => {
-        uploadProgress.value = progress;
-      }
-    );
+    const response = await confirmUpload(request);
 
     uploadedResourceId.value = response.id;
     auditStatus.value = 'passed';
-    auditMessage.value = response.aiMessage || '资源已通过AI审核并发布';
+    auditMessage.value = response.aiMessage || '资源已上传并发布';
 
     // 延迟后显示成功页面
     setTimeout(() => {
@@ -249,9 +257,23 @@ const handleUpload = async () => {
 
     ElMessage.success('上传成功！');
   } catch (error: any) {
+    console.error('[UploadResource] 上传失败:', error);
+    const rawMessage = (error?.message || '').trim();
+    let displayMessage = rawMessage || '上传失败，请重试';
+
+    if (uploadStage === 'uploading_oss') {
+      displayMessage = rawMessage
+        ? `OSS 上传失败：${rawMessage}`
+        : 'OSS 上传失败，请检查存储配置与权限';
+    } else if (uploadStage === 'confirming') {
+      displayMessage = rawMessage
+        ? `上传确认失败：${rawMessage}`
+        : '上传确认失败，请稍后重试';
+    }
+
     auditStatus.value = 'rejected';
-    auditMessage.value = error.message || '上传失败，请重试';
-    ElMessage.error(error.message || '上传失败');
+    auditMessage.value = displayMessage;
+    ElMessage.error(displayMessage);
   } finally {
     isUploading.value = false;
   }

@@ -11,16 +11,25 @@ use std::{
     rc::Rc,
     task::{Context, Poll},
 };
+use uuid::Uuid;
 
 use crate::models::CurrentUser;
 use crate::utils::{extract_current_user, verify_token};
 
 /// 公开路径规则
 #[derive(Clone)]
+enum PathMatchMode {
+    Prefix,
+    Exact,
+    ResourcePublicGet,
+}
+
+#[derive(Clone)]
 pub struct PublicPathRule {
     pub path_prefix: String,
     pub methods: Vec<Method>,
     pub exclude_paths: Vec<String>,
+    match_mode: PathMatchMode,
 }
 
 impl PublicPathRule {
@@ -30,6 +39,7 @@ impl PublicPathRule {
             path_prefix: path.to_string(),
             methods: vec![],
             exclude_paths: vec![],
+            match_mode: PathMatchMode::Prefix,
         }
     }
 
@@ -39,12 +49,30 @@ impl PublicPathRule {
             path_prefix: path.to_string(),
             methods,
             exclude_paths: vec![],
+            match_mode: PathMatchMode::Prefix,
+        }
+    }
+
+    /// 资源公开 GET 路由白名单
+    pub fn resource_public_gets() -> Self {
+        Self {
+            path_prefix: "/api/resources".to_string(),
+            methods: vec![Method::GET],
+            exclude_paths: vec![],
+            match_mode: PathMatchMode::ResourcePublicGet,
         }
     }
 
     /// 设置排除的路径
     pub fn exclude(mut self, paths: Vec<&str>) -> Self {
         self.exclude_paths = paths.into_iter().map(|p| p.to_string()).collect();
+        self
+    }
+
+    /// 设置精确匹配（仅匹配完整路径）
+    #[allow(dead_code)]
+    pub fn exact(mut self) -> Self {
+        self.match_mode = PathMatchMode::Exact;
         self
     }
 
@@ -55,14 +83,40 @@ impl PublicPathRule {
             return false;
         }
 
-        if !path.starts_with(&self.path_prefix) {
+        // 如果没有指定方法，则允许所有方法
+        if !self.methods.is_empty() && !self.methods.contains(method) {
             return false;
         }
-        // 如果没有指定方法，则允许所有方法
-        if self.methods.is_empty() {
-            return true;
+
+        match self.match_mode {
+            PathMatchMode::Prefix => path.starts_with(&self.path_prefix),
+            PathMatchMode::Exact => path == self.path_prefix,
+            PathMatchMode::ResourcePublicGet => Self::is_public_resource_get_path(path),
         }
-        self.methods.contains(method)
+    }
+
+    fn is_public_resource_get_path(path: &str) -> bool {
+        let segments: Vec<&str> = path.trim_matches('/').split('/').collect();
+
+        if segments.len() < 2 || segments[0] != "api" || segments[1] != "resources" {
+            return false;
+        }
+
+        match segments.len() {
+            // GET /api/resources
+            2 => true,
+            // GET /api/resources/search
+            // GET /api/resources/{id}
+            3 => segments[2] == "search" || Uuid::parse_str(segments[2]).is_ok(),
+            // GET /api/resources/{id}/download|content|like|comments
+            4 => {
+                if Uuid::parse_str(segments[2]).is_err() {
+                    return false;
+                }
+                matches!(segments[3], "download" | "content" | "like" | "comments")
+            }
+            _ => false,
+        }
     }
 }
 
@@ -99,7 +153,9 @@ impl JwtAuth {
     /// 检查路径是否是公开路径（预留接口）
     #[allow(dead_code)]
     fn is_public_path(&self, path: &str, method: &Method) -> bool {
-        self.public_paths.iter().any(|rule| rule.matches(path, method))
+        self.public_paths
+            .iter()
+            .any(|rule| rule.matches(path, method))
     }
 }
 
@@ -178,7 +234,11 @@ where
                         Ok(claims) => {
                             match extract_current_user(claims) {
                                 Ok(current_user) => {
-                                    log::info!("用户认证成功: {}, 角色: {:?}", current_user.username, current_user.role);
+                                    log::info!(
+                                        "用户认证成功: {}, 角色: {:?}",
+                                        current_user.username,
+                                        current_user.role
+                                    );
                                     // 将用户信息存入请求扩展
                                     req.extensions_mut().insert(current_user);
                                 }

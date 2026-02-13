@@ -218,13 +218,14 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import {
-  uploadImage,
+  confirmImageUpload,
   getMyImages,
   deleteImage,
   copyToClipboard,
   formatFileSize
 } from '../api/imageHost';
 import type { Image, ImageUploadResponse } from '../types/image';
+import { ossUpload } from '../utils/ossUpload';
 import {
   ArrowDown,
   Picture,
@@ -298,8 +299,19 @@ const uploadFile = async (file: File) => {
   uploadPercent.value = 0;
 
   try {
-    const result = await uploadImage(file, (percent) => {
-      uploadPercent.value = percent;
+    const uploadResult = await ossUpload({
+      file,
+      prefix: 'images',
+      onProgress: (percent) => {
+        uploadPercent.value = percent;
+      }
+    });
+
+    const result = await confirmImageUpload({
+      ossKey: uploadResult.ossKey,
+      originalFileName: uploadResult.fileName,
+      fileSize: uploadResult.fileSize,
+      mimeType: uploadResult.mimeType
     });
 
     lastUploadedImage.value = result;

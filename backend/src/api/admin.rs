@@ -3,9 +3,7 @@ use uuid::Uuid;
 
 use crate::db::AppState;
 use crate::models::CurrentUser;
-use crate::services::{
-    AdminService, AdminError, AuditResourceRequest, UpdateUserStatusRequest,
-};
+use crate::services::{AdminError, AdminService, AuditResourceRequest, UpdateUserStatusRequest};
 
 /// 检查用户是否是管理员
 fn check_admin(current_user: &CurrentUser) -> Result<(), AdminError> {
@@ -114,8 +112,7 @@ async fn update_user_status(
         }));
     }
 
-    match AdminService::update_user_status(&data.pool, user_id, req.is_active
-    ).await {
+    match AdminService::update_user_status(&data.pool, user_id, req.is_active).await {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
             "message": "用户状态已更新",
@@ -147,8 +144,7 @@ async fn get_pending_resources(
         .and_then(|p| p.parse::<i32>().ok())
         .unwrap_or(20);
 
-    match AdminService::get_pending_resources(&data.pool, page, per_page
-    ).await {
+    match AdminService::get_pending_resources(&data.pool, page, per_page).await {
         Ok(response) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
             "message": "success",
@@ -179,7 +175,9 @@ async fn audit_resource(
         resource_id,
         req.status.clone(),
         req.reason.clone(),
-    ).await {
+    )
+    .await
+    {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
             "message": "资源审核完成",
@@ -212,9 +210,7 @@ async fn get_comment_list(
         .unwrap_or(20);
     let audit_status = query.get("auditStatus").cloned();
 
-    match AdminService::get_comment_list(
-        &data.pool, page, per_page, audit_status
-    ).await {
+    match AdminService::get_comment_list(&data.pool, page, per_page, audit_status).await {
         Ok(response) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
             "message": "success",
@@ -266,8 +262,7 @@ async fn audit_comment(
     let comment_id = path.into_inner();
     let status = req.get("status").cloned().unwrap_or_default();
 
-    match AdminService::audit_comment(&data.pool, comment_id, status
-    ).await {
+    match AdminService::audit_comment(&data.pool, comment_id, status).await {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
             "code": 200,
             "message": "评论审核完成",

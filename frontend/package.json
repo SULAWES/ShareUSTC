@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
+    "ali-oss": "^6.23.0",
     "axios": "^1.13.4",
     "element-plus": "^2.13.2",
     "markdown-it": "^14.1.0",
@@ -19,6 +20,7 @@
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@types/ali-oss": "^6.23.2",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.10.1",
     "@vitejs/plugin-vue": "^6.0.1",
