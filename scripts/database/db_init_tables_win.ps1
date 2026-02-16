@@ -1,33 +1,27 @@
 # ============================================
-# ShareUSTC 数据库表结构初始化脚本 (Windows版本)
-# 不需要管理员，普通用户执行
+# ShareUSTC 数据库表结构初始化脚本
+# 不需要 sudo，普通用户执行
 # 功能: 创建/更新所有表、索引、触发器（支持增量更新）
 # ============================================
 
 # 配置变量
 $DB_NAME = "shareustc"
 $DB_USER = "shareustc_app"
-$DB_PASSWORD = "ShareUSTC_default_pwd"  # 应与 db_create_system_win.ps1 中一致
+$DB_PASSWORD = "ShareUSTC_default_pwd"  # 应与 db_create_system.sh 中一致
 $DB_HOST = "localhost"
 $DB_PORT = "5432"
 
-# 颜色输出函数
-function Write-ColorOutput($ForegroundColor) {
-    $fc = $host.UI.RawUI.ForegroundColor
-    $host.UI.RawUI.ForegroundColor = $ForegroundColor
-    if ($args) {
-        Write-Output $args
-    }
-    $host.UI.RawUI.ForegroundColor = $fc
-}
+# 颜色输出
+function Write-Green($msg) { Write-Host $msg -ForegroundColor Green }
+function Write-Yellow($msg) { Write-Host $msg -ForegroundColor Yellow }
+function Write-Red($msg) { Write-Host $msg -ForegroundColor Red }
 
-Write-ColorOutput Green "=== ShareUSTC 数据库表结构初始化（支持增量更新）==="
-Write-Output ""
+Write-Green "=== ShareUSTC 数据库表结构初始化（支持增量更新） ==="
+Write-Host ""
 
 # 检查 psql 是否可用
 $psqlPath = Get-Command psql -ErrorAction SilentlyContinue
 if (-not $psqlPath) {
-    # 尝试常见安装路径
     $commonPaths = @(
         "C:\Program Files\PostgreSQL\*\bin\psql.exe",
         "C:\Program Files (x86)\PostgreSQL\*\bin\psql.exe"
@@ -42,34 +36,36 @@ if (-not $psqlPath) {
         }
     }
     if (-not $found) {
-        Write-ColorOutput Red "错误: 未找到 psql 命令，请安装 PostgreSQL 客户端"
+        Write-Red "错误: 未找到 psql 命令，请安装 PostgreSQL 客户端"
         exit 1
     }
 }
 
 # 测试数据库连接
-Write-ColorOutput Yellow "测试数据库连接..."
+Write-Yellow "测试数据库连接..."
 $env:PGPASSWORD = $DB_PASSWORD
 try {
     $result = psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "SELECT 1;" 2>$null | Out-String
     if ($result -notmatch "1") {
-        throw "连接测试失败"
+        throw "Connection test failed"
     }
-    Write-ColorOutput Green "  数据库连接成功"
+    Write-Green "  数据库连接成功"
 } catch {
-    Write-ColorOutput Red "错误: 无法连接到数据库，请检查:"
-    Write-Output "  1. 数据库是否已创建 (运行 db_create_system_win.ps1)"
-    Write-Output "  2. 用户名、密码是否正确"
-    Write-Output "  3. PostgreSQL 服务是否运行"
+    Write-Red "错误: 无法连接到数据库，请检查:"
+    Write-Host "  1. 数据库是否已创建 (运行 db_create_system.sh)"
+    Write-Host "  2. 用户名、密码是否正确"
+    Write-Host "  3. PostgreSQL 服务是否运行"
     exit 1
 }
 
-Write-Output ""
+Write-Host ""
 
 # 创建/更新表的 SQL
-Write-ColorOutput Yellow "开始执行增量更新..."
+Write-Yellow "开始执行增量更新..."
 
-$sqlScript = @"
+$sqlFile = [System.IO.Path]::GetTempFileName() + ".sql"
+
+$sqlContent = @'
 -- ============================================
 -- ShareUSTC 数据库增量更新脚本
 -- 支持: 1) 首次创建表  2) 添加新列  3) 创建索引和触发器
@@ -88,16 +84,15 @@ CREATE SEQUENCE IF NOT EXISTS user_sn_seq START 1;
 -- 增强：确保序列起始值正确（考虑已有数据）
 -- 版本迁移注意：如果数据库已有用户数据，此逻辑会自动调整序列
 -- ============================================
-DO \\\
-egin
+DO $$
+BEGIN
     PERFORM setval('user_sn_seq',
         (SELECT COALESCE(MAX(sn), 0) + 1 FROM users),
         false);
 EXCEPTION
     WHEN undefined_table THEN NULL;
     WHEN undefined_column THEN NULL;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 创建表结构（支持增量更新）
@@ -114,8 +109,8 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- 第二步：添加各列（如果不存在）
-DO \\\
-egin
+DO $$
+BEGIN
     -- sn: 用户编号，从1开始自增
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'sn') THEN
         ALTER TABLE users ADD COLUMN sn BIGINT UNIQUE;
@@ -175,8 +170,7 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'updated_at') THEN
         ALTER TABLE users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
     END IF;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 2. 资源表
@@ -186,8 +180,8 @@ CREATE TABLE IF NOT EXISTS resources (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resources' AND column_name = 'title') THEN
         ALTER TABLE resources ADD COLUMN title VARCHAR(255) NOT NULL DEFAULT '';
     END IF;
@@ -254,8 +248,7 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resources' AND column_name = 'updated_at') THEN
         ALTER TABLE resources ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
     END IF;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 3. 资源统计表
@@ -264,8 +257,8 @@ CREATE TABLE IF NOT EXISTS resource_stats (
     resource_id UUID PRIMARY KEY REFERENCES resources(id) ON DELETE CASCADE
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resource_stats' AND column_name = 'views') THEN
         ALTER TABLE resource_stats ADD COLUMN views INTEGER DEFAULT 0;
     END IF;
@@ -323,8 +316,7 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resource_stats' AND column_name = 'detail_level_count') THEN
         ALTER TABLE resource_stats ADD COLUMN detail_level_count INTEGER DEFAULT 0;
     END IF;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 4. 评分表
@@ -334,8 +326,8 @@ CREATE TABLE IF NOT EXISTS ratings (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'ratings' AND column_name = 'resource_id') THEN
         -- 版本迁移注意：旧数据的外键需要手动处理
         IF EXISTS (SELECT 1 FROM ratings LIMIT 1) THEN
@@ -379,12 +371,11 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'ratings' AND column_name = 'updated_at') THEN
         ALTER TABLE ratings ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
     END IF;
-END \\\
-;
+END $$;
 
 -- 添加唯一约束（如果存在重复数据，需要先清理）
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
         WHERE conname = 'ratings_resource_id_user_id_key' AND conrelid = 'ratings'::regclass
@@ -394,8 +385,7 @@ DO \\\
 EXCEPTION
     WHEN unique_violation THEN
         RAISE NOTICE '无法添加唯一约束：存在重复数据 (resource_id, user_id)';
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 5. 点赞表
@@ -404,8 +394,8 @@ CREATE TABLE IF NOT EXISTS likes (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'likes' AND column_name = 'resource_id') THEN
         ALTER TABLE likes ADD COLUMN resource_id UUID REFERENCES resources(id) ON DELETE CASCADE;
     END IF;
@@ -413,12 +403,11 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'likes' AND column_name = 'user_id') THEN
         ALTER TABLE likes ADD COLUMN user_id UUID REFERENCES users(id) ON DELETE CASCADE;
     END IF;
-END \\\
-;
+END $$;
 
 -- 添加主键约束
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
         WHERE conname = 'likes_pkey' AND conrelid = 'likes'::regclass
@@ -428,8 +417,7 @@ DO \\\
 EXCEPTION
     WHEN unique_violation THEN
         RAISE NOTICE '无法添加主键约束：存在重复数据';
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 6. 评论表
@@ -439,8 +427,8 @@ CREATE TABLE IF NOT EXISTS comments (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'comments' AND column_name = 'resource_id') THEN
         -- 版本迁移注意：旧数据的外键需要手动处理
         IF EXISTS (SELECT 1 FROM comments LIMIT 1) THEN
@@ -470,8 +458,7 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'comments' AND column_name = 'updated_at') THEN
         ALTER TABLE comments ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
     END IF;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 7. 收藏夹表
@@ -481,8 +468,8 @@ CREATE TABLE IF NOT EXISTS favorites (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'favorites' AND column_name = 'user_id') THEN
         -- 版本迁移注意：旧数据的外键需要手动处理
         IF EXISTS (SELECT 1 FROM favorites LIMIT 1) THEN
@@ -495,8 +482,7 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'favorites' AND column_name = 'name') THEN
         ALTER TABLE favorites ADD COLUMN name VARCHAR(255) NOT NULL DEFAULT '未命名收藏夹';
     END IF;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 8. 收藏夹资源关联表
@@ -505,8 +491,8 @@ CREATE TABLE IF NOT EXISTS favorite_resources (
     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'favorite_resources' AND column_name = 'favorite_id') THEN
         ALTER TABLE favorite_resources ADD COLUMN favorite_id UUID REFERENCES favorites(id) ON DELETE CASCADE;
     END IF;
@@ -514,12 +500,11 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'favorite_resources' AND column_name = 'resource_id') THEN
         ALTER TABLE favorite_resources ADD COLUMN resource_id UUID REFERENCES resources(id) ON DELETE CASCADE;
     END IF;
-END \\\
-;
+END $$;
 
 -- 添加主键约束
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
         WHERE conname = 'favorite_resources_pkey' AND conrelid = 'favorite_resources'::regclass
@@ -529,8 +514,7 @@ DO \\\
 EXCEPTION
     WHEN unique_violation THEN
         RAISE NOTICE '无法添加主键约束：存在重复数据';
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 9. 申领表
@@ -540,8 +524,8 @@ CREATE TABLE IF NOT EXISTS claims (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'claims' AND column_name = 'resource_id') THEN
         -- 版本迁移注意：旧数据的外键需要手动处理
         IF EXISTS (SELECT 1 FROM claims LIMIT 1) THEN
@@ -583,8 +567,7 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'claims' AND column_name = 'reviewed_at') THEN
         ALTER TABLE claims ADD COLUMN reviewed_at TIMESTAMP;
     END IF;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 10. 通知表
@@ -594,8 +577,8 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'recipient_id') THEN
         ALTER TABLE notifications ADD COLUMN recipient_id UUID REFERENCES users(id) ON DELETE CASCADE;
     END IF;
@@ -623,8 +606,7 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notifications' AND column_name = 'link_url') THEN
         ALTER TABLE notifications ADD COLUMN link_url VARCHAR(500);
     END IF;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 10b. 通知已读记录表（用于群发通知的独立已读状态）
@@ -634,8 +616,8 @@ CREATE TABLE IF NOT EXISTS notification_reads (
     read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'notification_reads' AND column_name = 'notification_id') THEN
         -- 版本迁移注意：旧数据的外键需要手动处理
         IF EXISTS (SELECT 1 FROM notification_reads LIMIT 1) THEN
@@ -653,12 +635,11 @@ DO \\\
             ALTER TABLE notification_reads ADD COLUMN user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE DEFAULT '00000000-0000-0000-0000-000000000000';
         END IF;
     END IF;
-END \\\
-;
+END $$;
 
 -- 添加唯一约束
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
         WHERE conname = 'notification_reads_notification_id_user_id_key' AND conrelid = 'notification_reads'::regclass
@@ -668,8 +649,7 @@ DO \\\
 EXCEPTION
     WHEN unique_violation THEN
         RAISE NOTICE '无法添加唯一约束：存在重复数据';
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 11. 审计日志表
@@ -679,8 +659,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'audit_logs' AND column_name = 'user_id') THEN
         ALTER TABLE audit_logs ADD COLUMN user_id UUID REFERENCES users(id);
     END IF;
@@ -704,8 +684,7 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'audit_logs' AND column_name = 'ip_address') THEN
         ALTER TABLE audit_logs ADD COLUMN ip_address INET;
     END IF;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 12. 下载记录表
@@ -715,8 +694,8 @@ CREATE TABLE IF NOT EXISTS download_logs (
     downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'download_logs' AND column_name = 'resource_id') THEN
         -- 版本迁移注意：旧数据的外键需要手动处理
         IF EXISTS (SELECT 1 FROM download_logs LIMIT 1) THEN
@@ -733,8 +712,7 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'download_logs' AND column_name = 'ip_address') THEN
         ALTER TABLE download_logs ADD COLUMN ip_address INET NOT NULL DEFAULT '0.0.0.0';
     END IF;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 13. 图片表
@@ -744,8 +722,8 @@ CREATE TABLE IF NOT EXISTS images (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-DO \\\
-egin
+DO $$
+BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'images' AND column_name = 'uploader_id') THEN
         -- 版本迁移注意：旧数据的外键需要手动处理
         IF EXISTS (SELECT 1 FROM images LIMIT 1) THEN
@@ -770,31 +748,28 @@ DO \\\
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'images' AND column_name = 'mime_type') THEN
         ALTER TABLE images ADD COLUMN mime_type VARCHAR(50);
     END IF;
-END \\\
-;
+END $$;
 
 -- ============================================
 -- 为现有用户分配 sn（增量更新支持）
 -- ============================================
-DO \\\
-egin
-    DECLARE
-        user_record RECORD;
-        current_sn BIGINT := 1;
-    BEGIN
-        FOR user_record IN
-            SELECT id FROM users WHERE sn IS NULL ORDER BY created_at ASC
-        LOOP
-            UPDATE users SET sn = current_sn WHERE id = user_record.id;
-            current_sn := current_sn + 1;
-        END LOOP;
+DO $$
+DECLARE
+    user_record RECORD;
+    current_sn BIGINT := 1;
+BEGIN
+    FOR user_record IN
+        SELECT id FROM users WHERE sn IS NULL ORDER BY created_at ASC
+    LOOP
+        UPDATE users SET sn = current_sn WHERE id = user_record.id;
+        current_sn := current_sn + 1;
+    END LOOP;
 
-        -- 如果分配了 sn，更新序列的下一个值
-        IF current_sn > 1 THEN
-            PERFORM setval('user_sn_seq', current_sn - 1, true);
-        END IF;
-    END \\\
-;
+    -- 如果分配了 sn，更新序列的下一个值
+    IF current_sn > 1 THEN
+        PERFORM setval('user_sn_seq', current_sn - 1, true);
+    END IF;
+END $$;
 
 -- ============================================
 -- 创建索引
@@ -865,12 +840,13 @@ CREATE INDEX IF NOT EXISTS idx_images_uploader ON images(uploader_id);
 -- ============================================
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS \\\
-egin
+RETURNS TRIGGER AS $$
+BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-\\\negin LANGUAGE 'plpgsql';
+$$
+language 'plpgsql';
 
 DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at
@@ -927,48 +903,46 @@ UNION ALL
 SELECT 'download_logs', COUNT(*) FROM information_schema.columns WHERE table_name = 'download_logs'
 UNION ALL
 SELECT 'images', COUNT(*) FROM information_schema.columns WHERE table_name = 'images';
-"@
+'@
 
-# 执行SQL脚本
-$tempFile = [System.IO.Path]::GetTempFileName() + ".sql"
-$sqlScript | Out-File -FilePath $tempFile -Encoding UTF8
+[System.IO.File]::WriteAllText($sqlFile, $sqlContent, [System.Text.Encoding]::UTF8)
 
 try {
-    psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f $tempFile 2>$null
+    psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f $sqlFile 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "SQL执行失败"
+        throw "SQL execution failed"
     }
 } catch {
-    Write-ColorOutput Red "错误: 执行SQL脚本失败"
-    Write-ColorOutput Red " $_"
-    Remove-Item $tempFile -ErrorAction SilentlyContinue
+    Write-Red "错误: SQL 执行失败"
+    Write-Red $_
+    Remove-Item $sqlFile -ErrorAction SilentlyContinue
     exit 1
 } finally {
-    Remove-Item $tempFile -ErrorAction SilentlyContinue
+    Remove-Item $sqlFile -ErrorAction SilentlyContinue
 }
 
-Write-Output ""
-Write-ColorOutput Green "=== 表结构增量更新完成 ==="
-Write-Output ""
-Write-Output "已创建/更新的表:"
-Write-Output "  - users (用户表)"
-Write-Output "  - resources (资源表)"
-Write-Output "  - resource_stats (资源统计表)"
-Write-Output "  - ratings (评分表)"
-Write-Output "  - likes (点赞表)"
-Write-Output "  - comments (评论表)"
-Write-Output "  - favorites (收藏夹表)"
-Write-Output "  - favorite_resources (收藏夹资源关联表)"
-Write-Output "  - claims (申领表)"
-Write-Output "  - notifications (通知表)"
-Write-Output "  - notification_reads (通知已读记录表)"
-Write-Output "  - audit_logs (审计日志表)"
-Write-Output "  - download_logs (下载记录表)"
-Write-Output "  - images (图片表)"
-Write-Output ""
-Write-Output "创建的索引: 30+ 个"
-Write-Output "创建的触发器: 4 个 (自动更新 updated_at)"
-Write-Output ""
-Write-ColorOutput Yellow "说明:"
-Write-Output "  此脚本支持增量更新，可重复执行。"
-Write-Output "  新增列时会自动添加，不会影响已有数据。"
+Write-Host ""
+Write-Green "=== 表结构增量更新完成 ==="
+Write-Host ""
+Write-Host "已创建/更新的表:"
+Write-Host "  - users (用户表)"
+Write-Host "  - resources (资源表)"
+Write-Host "  - resource_stats (资源统计表)"
+Write-Host "  - ratings (评分表)"
+Write-Host "  - likes (点赞表)"
+Write-Host "  - comments (评论表)"
+Write-Host "  - favorites (收藏夹表)"
+Write-Host "  - favorite_resources (收藏夹资源关联表)"
+Write-Host "  - claims (申领表)"
+Write-Host "  - notifications (通知表)"
+Write-Host "  - notification_reads (通知已读记录表)"
+Write-Host "  - audit_logs (审计日志表)"
+Write-Host "  - download_logs (下载记录表)"
+Write-Host "  - images (图片表)"
+Write-Host ""
+Write-Host "创建的索引: 30+ 个"
+Write-Host "创建的触发器: 4 个 (自动更新 updated_at)"
+Write-Host ""
+Write-Yellow "说明:"
+Write-Host "  此脚本支持增量更新，可重复执行。"
+Write-Host "  新增列时会自动添加，不会影响已有数据。"
