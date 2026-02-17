@@ -227,6 +227,21 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resources' AND column_name = 'updated_at') THEN
         ALTER TABLE resources ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
     END IF;
+
+    -- OSS云存储支持：存储类型（local/oss）
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resources' AND column_name = 'storage_type') THEN
+        ALTER TABLE resources ADD COLUMN storage_type VARCHAR(20) DEFAULT 'local';
+    END IF;
+
+    -- OSS云存储支持：云端文件URL（当存储类型为oss时使用）
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resources' AND column_name = 'file_url') THEN
+        ALTER TABLE resources ADD COLUMN file_url VARCHAR(1000);
+    END IF;
+
+    -- OSS云存储支持：源文件URL（当存储类型为oss时使用）
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resources' AND column_name = 'source_file_url') THEN
+        ALTER TABLE resources ADD COLUMN source_file_url VARCHAR(1000);
+    END IF;
 END $$;
 
 -- ============================================
@@ -727,6 +742,16 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'images' AND column_name = 'mime_type') THEN
         ALTER TABLE images ADD COLUMN mime_type VARCHAR(50);
     END IF;
+
+    -- OSS云存储支持：存储类型（local/oss）
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'images' AND column_name = 'storage_type') THEN
+        ALTER TABLE images ADD COLUMN storage_type VARCHAR(20) DEFAULT 'local';
+    END IF;
+
+    -- OSS云存储支持：云端文件URL（当存储类型为oss时使用）
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'images' AND column_name = 'file_url') THEN
+        ALTER TABLE images ADD COLUMN file_url VARCHAR(1000);
+    END IF;
 END $$;
 
 -- ============================================
@@ -902,6 +927,7 @@ CREATE INDEX IF NOT EXISTS idx_resources_category ON resources(category);
 CREATE INDEX IF NOT EXISTS idx_resources_audit_status ON resources(audit_status);
 CREATE INDEX IF NOT EXISTS idx_resources_tags ON resources USING GIN(tags);
 CREATE INDEX IF NOT EXISTS idx_resources_created_at ON resources(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_resources_storage_type ON resources(storage_type);
 
 -- 评分表索引
 CREATE INDEX IF NOT EXISTS idx_ratings_resource ON ratings(resource_id);
@@ -947,6 +973,7 @@ CREATE INDEX IF NOT EXISTS idx_download_logs_time ON download_logs(downloaded_at
 
 -- 图片表索引
 CREATE INDEX IF NOT EXISTS idx_images_uploader ON images(uploader_id);
+CREATE INDEX IF NOT EXISTS idx_images_storage_type ON images(storage_type);
 
 -- 教师表索引
 CREATE INDEX IF NOT EXISTS idx_teachers_sn ON teachers(sn);
