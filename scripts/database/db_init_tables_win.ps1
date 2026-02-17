@@ -1,4 +1,4 @@
-# ============================================
+﻿# ============================================
 # ShareUSTC 数据库表结构初始化脚本
 # 不需要 sudo，普通用户执行
 # 功能: 创建/更新所有表、索引、触发器（支持增量更新）
@@ -905,9 +905,15 @@ UNION ALL
 SELECT 'images', COUNT(*) FROM information_schema.columns WHERE table_name = 'images';
 '@
 
-[System.IO.File]::WriteAllText($sqlFile, $sqlContent, [System.Text.Encoding]::UTF8)
+# 使用无BOM的UTF-8编码写入文件（psql无法识别带BOM的UTF-8）
+# 先将字符串转为UTF-8字节数组，确保中文正确编码
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$bytes = $utf8NoBom.GetBytes($sqlContent)
+[System.IO.File]::WriteAllBytes($sqlFile, $bytes)
 
 try {
+    # 设置客户端编码为 UTF8，确保 psql 正确读取 SQL 文件
+    $env:PGCLIENTENCODING = "UTF8"
     psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f $sqlFile 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "SQL execution failed"

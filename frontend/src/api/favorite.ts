@@ -152,9 +152,7 @@ export const downloadFavorite = async (favoriteId: string, favoriteName?: string
   const response = await fetch(
     `${cleanBaseUrl}/api/favorites/${favoriteId}/download`,
     {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`
-      }
+      credentials: 'include', // 关键：携带 Cookie 以支持跨域认证
     }
   );
 

@@ -12,6 +12,7 @@ DB_NAME="shareustc"
 DB_USER="shareustc_app"
 DB_PASSWORD="ShareUSTC_default_pwd"  # 生产环境请修改此密码
 POSTGRES_USER="postgres"  # PostgreSQL 超级用户
+DB_PORT="5432"  # PostgreSQL 端口
 
 # 颜色输出
 RED='\033[0;31m'
@@ -42,36 +43,36 @@ fi
 echo ""
 echo -e "${YELLOW}步骤 2/4: 创建数据库用户 '${DB_USER}'...${NC}"
 # 检查用户是否已存在
-USER_EXISTS=$(sudo -u postgres psql -t -c "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" 2>/dev/null || echo "")
+USER_EXISTS=$(sudo -u postgres psql -p ${DB_PORT} -t -c "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" 2>/dev/null || echo "")
 if [ -n "$USER_EXISTS" ]; then
     echo -e "${YELLOW}  用户 '${DB_USER}' 已存在，跳过创建${NC}"
 else
-    sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
+    sudo -u postgres psql -p ${DB_PORT} -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
     echo -e "${GREEN}  用户 '${DB_USER}' 创建成功${NC}"
 fi
 
 echo ""
 echo -e "${YELLOW}步骤 3/4: 创建数据库 '${DB_NAME}'...${NC}"
 # 检查数据库是否已存在
-DB_EXISTS=$(sudo -u postgres psql -t -c "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" 2>/dev/null || echo "")
+DB_EXISTS=$(sudo -u postgres psql -p ${DB_PORT} -t -c "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" 2>/dev/null || echo "")
 if [ -n "$DB_EXISTS" ]; then
     echo -e "${YELLOW}  数据库 '${DB_NAME}' 已存在，跳过创建${NC}"
 else
-    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER} ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8' TEMPLATE template0;"
+    sudo -u postgres psql -p ${DB_PORT} -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER} ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8' TEMPLATE template0;"
     echo -e "${GREEN}  数据库 '${DB_NAME}' 创建成功${NC}"
 fi
 
 echo ""
 echo -e "${YELLOW}步骤 4/4: 授予权限...${NC}"
 # 授予数据库连接权限
-sudo -u postgres psql -c "GRANT CONNECT ON DATABASE ${DB_NAME} TO ${DB_USER};"
+sudo -u postgres psql -p ${DB_PORT} -c "GRANT CONNECT ON DATABASE ${DB_NAME} TO ${DB_USER};"
 
 # 在数据库内授予 schema 权限
-sudo -u postgres psql -d ${DB_NAME} -c "GRANT USAGE ON SCHEMA public TO ${DB_USER};"
-sudo -u postgres psql -d ${DB_NAME} -c "GRANT CREATE ON SCHEMA public TO ${DB_USER};"
+sudo -u postgres psql -p ${DB_PORT} -d ${DB_NAME} -c "GRANT USAGE ON SCHEMA public TO ${DB_USER};"
+sudo -u postgres psql -p ${DB_PORT} -d ${DB_NAME} -c "GRANT CREATE ON SCHEMA public TO ${DB_USER};"
 
 # 启用 pgcrypto 扩展
-sudo -u postgres psql -d ${DB_NAME} -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+sudo -u postgres psql -p ${DB_PORT} -d ${DB_NAME} -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 
 echo -e "${GREEN}  权限授予完成${NC}"
 

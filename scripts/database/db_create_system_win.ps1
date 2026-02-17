@@ -1,4 +1,4 @@
-# ============================================
+﻿# ============================================
 # ShareUSTC 数据库系统级初始化脚本
 # 需要管理员权限执行
 # 功能: 创建数据库和用户
@@ -11,6 +11,9 @@ $DB_NAME = "shareustc"
 $DB_USER = "shareustc_app" 
 $DB_PASSWORD = "ShareUSTC_default_pwd"  # 生产环境请修改此密码
 $POSTGRES_USER = "postgres"  # PostgreSQL 超级用户
+# PostgreSQL 'postgres' 用户的密码（修改以下值后再执行脚本）
+$POSTGRES_PASSWORD = "bitoy@4438-+USTC"
+$DB_PORT = "5432"  # PostgreSQL 端口
 
 # 颜色输出
 function Write-ColorOutput($ForegroundColor) {
@@ -77,18 +80,13 @@ if ($service -and $service.Status -eq "Running") {
 
 Write-Output ""
 
-# Prompt for postgres password
-Write-ColorOutput Yellow "请输入 PostgreSQL '$POSTGRES_USER' 用户的密码（默认通常是空或 'postgres'）："
-$postgresPassword = Read-Host -AsSecureString "PostgreSQL postgres 密码"
-$BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($postgresPassword)
-$plainPostgresPassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-
-$env:PGPASSWORD = $plainPostgresPassword
+# 从配置变量设置 PostgreSQL 密码
+$env:PGPASSWORD = $POSTGRES_PASSWORD
 
 # 测试 postgres 连接
 Write-ColorOutput Yellow "测试 postgres 连接..."
 try {
-    $testResult = & $psqlPath -U $POSTGRES_USER -d postgres -c "SELECT 1;" 2>&1
+    $testResult = & $psqlPath -U $POSTGRES_USER -p $DB_PORT -d postgres -c "SELECT 1;" 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "Connection failed"
     }
@@ -104,11 +102,11 @@ Write-Output ""
 # 创建数据库用户
 Write-ColorOutput Yellow "步骤 2/4: 创建数据库用户 '$DB_USER'..."
 try {
-    $userExists = & $psqlPath -U $POSTGRES_USER -d postgres -t -c "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER';" 2>&1 | Out-String
+    $userExists = & $psqlPath -U $POSTGRES_USER -p $DB_PORT -d postgres -t -c "SELECT 1 FROM pg_roles WHERE rolname='$DB_USER';" 2>&1 | Out-String
     if ($userExists.Trim() -eq "1") {
         Write-ColorOutput Yellow "  用户 '$DB_USER' 已存在，跳过创建"
     } else {
-        & $psqlPath -U $POSTGRES_USER -d postgres -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD';" 2>&1 | Out-Null
+        & $psqlPath -U $POSTGRES_USER -p $DB_PORT -d postgres -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASSWORD';" 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-ColorOutput Green "  用户 '$DB_USER' 创建成功"
         } else {
@@ -126,11 +124,11 @@ Write-Output ""
 # 创建数据库
 Write-ColorOutput Yellow "步骤 3/4: 创建数据库 '$DB_NAME'..."
 try {
-    $dbExists = & $psqlPath -U $POSTGRES_USER -d postgres -t -c "SELECT 1 FROM pg_database WHERE datname='$DB_NAME';" 2>&1 | Out-String
+    $dbExists = & $psqlPath -U $POSTGRES_USER -p $DB_PORT -d postgres -t -c "SELECT 1 FROM pg_database WHERE datname='$DB_NAME';" 2>&1 | Out-String
     if ($dbExists.Trim() -eq "1") {
         Write-ColorOutput Yellow "  数据库 '$DB_NAME' 已存在，跳过创建"
     } else {
-        & $psqlPath -U $POSTGRES_USER -d postgres -c "CREATE DATABASE $DB_NAME OWNER $DB_USER ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;" 2>&1 | Out-Null
+        & $psqlPath -U $POSTGRES_USER -p $DB_PORT -d postgres -c "CREATE DATABASE $DB_NAME OWNER $DB_USER ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0;" 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-ColorOutput Green "  数据库 '$DB_NAME' 创建成功"
         } else {
@@ -149,14 +147,14 @@ Write-Output ""
 Write-ColorOutput Yellow "步骤 4/4: 授予权限..."
 try {
     # 授予数据库连接权限
-    & $psqlPath -U $POSTGRES_USER -d postgres -c "GRANT CONNECT ON DATABASE $DB_NAME TO $DB_USER;" 2>&1 | Out-Null
+    & $psqlPath -U $POSTGRES_USER -p $DB_PORT -d postgres -c "GRANT CONNECT ON DATABASE $DB_NAME TO $DB_USER;" 2>&1 | Out-Null
 
     # 在数据库内授予 schema 权限
-    & $psqlPath -U $POSTGRES_USER -d $DB_NAME -c "GRANT USAGE ON SCHEMA public TO $DB_USER;" 2>&1 | Out-Null
-    & $psqlPath -U $POSTGRES_USER -d $DB_NAME -c "GRANT CREATE ON SCHEMA public TO $DB_USER;" 2>&1 | Out-Null
+    & $psqlPath -U $POSTGRES_USER -p $DB_PORT -d $DB_NAME -c "GRANT USAGE ON SCHEMA public TO $DB_USER;" 2>&1 | Out-Null
+    & $psqlPath -U $POSTGRES_USER -p $DB_PORT -d $DB_NAME -c "GRANT CREATE ON SCHEMA public TO $DB_USER;" 2>&1 | Out-Null
 
     # 启用 pgcrypto 扩展
-    & $psqlPath -U $POSTGRES_USER -d $DB_NAME -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;" 2>&1 | Out-Null
+    & $psqlPath -U $POSTGRES_USER -p $DB_PORT -d $DB_NAME -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;" 2>&1 | Out-Null
 
     Write-ColorOutput Green "  权限授予完成"
 } catch {

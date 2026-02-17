@@ -20,6 +20,8 @@ DB_PASSWORD = "ShareUSTC_default_pwd"  # 生产环境请修改此密码
 DB_HOST = "localhost"
 DB_PORT = "5432"
 POSTGRES_USER = "postgres"  # PostgreSQL 超级用户
+# PostgreSQL 'postgres' 用户的密码（修改以下值后再执行脚本）
+POSTGRES_PASSWORD = "postgres"
 
 # ============================================
 # 数据库创建部分的 SQL
@@ -948,14 +950,8 @@ def main():
     print(f"使用 psql: {psql}")
     print()
 
-    # 请求 postgres 用户密码
-    system = platform.system()
-    if system == "Windows":
-        import getpass as gp
-        postgres_password = gp.getpass(f"请输入 PostgreSQL '{POSTGRES_USER}' 用户的密码 (默认通常为 'postgres' 或空): ")
-    else:
-        import getpass as gp
-        postgres_password = gp.getpass(f"请输入 PostgreSQL '{POSTGRES_USER}' 用户的密码 (默认通常为 'postgres' 或空): ")
+    # 从配置变量获取 postgres 密码
+    postgres_password = POSTGRES_PASSWORD
     print()
 
     # 测试 postgres 连接
