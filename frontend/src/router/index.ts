@@ -6,6 +6,8 @@ import logger from '../utils/logger';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import AdminDashboard from '../views/admin/Dashboard.vue';
 import UserManagement from '../views/admin/UserManagement.vue';
+import TeacherManagement from '../views/admin/TeacherManagement.vue';
+import CourseManagement from '../views/admin/CourseManagement.vue';
 import ResourceAudit from '../views/admin/ResourceAudit.vue';
 import CommentManagement from '../views/admin/CommentManagement.vue';
 import SendNotification from '../views/admin/SendNotification.vue';
@@ -131,6 +133,16 @@ const routes = [
         path: 'users',
         name: 'UserManagement',
         component: UserManagement
+      },
+      {
+        path: 'teachers',
+        name: 'TeacherManagement',
+        component: TeacherManagement
+      },
+      {
+        path: 'courses',
+        name: 'CourseManagement',
+        component: CourseManagement
       },
       {
         path: 'resources',

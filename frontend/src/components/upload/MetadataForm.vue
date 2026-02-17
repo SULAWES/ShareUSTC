@@ -59,6 +59,48 @@
       <div class="form-tip">输入后按回车添加标签，常用标签：{{ commonTags.join('、') }}</div>
     </el-form-item>
 
+    <!-- 授课教师选择 -->
+    <el-form-item label="授课教师">
+      <el-select
+        v-model="form.teacherSns"
+        multiple
+        filterable
+        clearable
+        placeholder="选择授课教师（可选，可多选）"
+        style="width: 100%"
+        :loading="loadingTeachers"
+      >
+        <el-option
+          v-for="teacher in teachers"
+          :key="teacher.sn"
+          :label="teacher.name + (teacher.department ? ` (${teacher.department})` : '')"
+          :value="teacher.sn"
+        />
+      </el-select>
+      <div class="form-tip">选择与该资源相关的授课教师，可多选</div>
+    </el-form-item>
+
+    <!-- 课程选择 -->
+    <el-form-item label="所属课程">
+      <el-select
+        v-model="form.courseSns"
+        multiple
+        filterable
+        clearable
+        placeholder="选择所属课程（可选，可多选）"
+        style="width: 100%"
+        :loading="loadingCourses"
+      >
+        <el-option
+          v-for="course in courses"
+          :key="course.sn"
+          :label="course.name + (course.semester ? ` (${course.semester})` : '')"
+          :value="course.sn"
+        />
+      </el-select>
+      <div class="form-tip">选择与该资源相关的课程，可多选</div>
+    </el-form-item>
+
     <el-form-item label="资源描述">
       <el-input
         v-model="form.description"
@@ -77,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue';
+import { ref, reactive, watch, onMounted } from 'vue';
 import type { FormInstance, FormRules } from 'element-plus';
 import {
   ResourceCategoryLabels,
@@ -85,6 +127,10 @@ import {
   type ResourceCategoryType,
   type ResourceTypeType
 } from '../../types/resource';
+import { getTeachers } from '../../api/teacher';
+import { getCourses } from '../../api/course';
+import type { Teacher } from '../../types/teacher';
+import type { Course } from '../../types/course';
 
 interface FormData {
   title: string;
@@ -92,6 +138,8 @@ interface FormData {
   category: ResourceCategoryType;
   tags: string[];
   description: string;
+  teacherSns: number[];
+  courseSns: number[];
 }
 
 const props = defineProps<{
@@ -110,7 +158,48 @@ const form = reactive<FormData>({
   courseName: props.modelValue.courseName || '',
   category: props.modelValue.category || 'other',
   tags: props.modelValue.tags || [],
-  description: props.modelValue.description || ''
+  description: props.modelValue.description || '',
+  teacherSns: props.modelValue.teacherSns || [],
+  courseSns: props.modelValue.courseSns || []
+});
+
+// 教师列表
+const teachers = ref<Teacher[]>([]);
+const loadingTeachers = ref(false);
+
+// 课程列表
+const courses = ref<Course[]>([]);
+const loadingCourses = ref(false);
+
+// 加载教师列表
+const loadTeachers = async () => {
+  loadingTeachers.value = true;
+  try {
+    const res = await getTeachers();
+    teachers.value = res;
+  } catch (error) {
+    console.error('加载教师列表失败', error);
+  } finally {
+    loadingTeachers.value = false;
+  }
+};
+
+// 加载课程列表
+const loadCourses = async () => {
+  loadingCourses.value = true;
+  try {
+    const res = await getCourses();
+    courses.value = res;
+  } catch (error) {
+    console.error('加载课程列表失败', error);
+  } finally {
+    loadingCourses.value = false;
+  }
+};
+
+onMounted(() => {
+  loadTeachers();
+  loadCourses();
 });
 
 // 常用标签
@@ -159,6 +248,8 @@ watch(
     form.category = newValue.category || 'other';
     form.tags = newValue.tags || [];
     form.description = newValue.description || '';
+    form.teacherSns = newValue.teacherSns || [];
+    form.courseSns = newValue.courseSns || [];
   },
   { deep: true }
 );

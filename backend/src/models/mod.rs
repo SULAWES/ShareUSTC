@@ -8,6 +8,8 @@ pub mod like;
 pub mod comment;
 pub mod notification;
 pub mod favorite;
+pub mod teacher;
+pub mod course;
 
 // 模型导出供其他模块使用
 #[allow(unused_imports)]
@@ -26,3 +28,7 @@ pub use image::*;
 pub use notification::*;
 #[allow(unused_imports)]
 pub use favorite::*;
+#[allow(unused_imports)]
+pub use teacher::*;
+#[allow(unused_imports)]
+pub use course::*;

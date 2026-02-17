@@ -638,6 +638,127 @@ BEGIN
 END $$;
 
 -- ============================================
+-- 14. 授课教师表
+-- ============================================
+CREATE SEQUENCE IF NOT EXISTS teacher_sn_seq START 1;
+
+CREATE TABLE IF NOT EXISTS teachers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teachers' AND column_name = 'sn') THEN
+        ALTER TABLE teachers ADD COLUMN sn BIGINT UNIQUE NOT NULL DEFAULT nextval('teacher_sn_seq');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teachers' AND column_name = 'name') THEN
+        ALTER TABLE teachers ADD COLUMN name VARCHAR(100) NOT NULL DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teachers' AND column_name = 'department') THEN
+        ALTER TABLE teachers ADD COLUMN department VARCHAR(100);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teachers' AND column_name = 'is_active') THEN
+        ALTER TABLE teachers ADD COLUMN is_active BOOLEAN DEFAULT TRUE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'teachers' AND column_name = 'updated_at') THEN
+        ALTER TABLE teachers ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    END IF;
+END $$;
+
+-- ============================================
+-- 15. 课程表
+-- ============================================
+CREATE SEQUENCE IF NOT EXISTS course_sn_seq START 1;
+
+CREATE TABLE IF NOT EXISTS courses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'sn') THEN
+        ALTER TABLE courses ADD COLUMN sn BIGINT UNIQUE NOT NULL DEFAULT nextval('course_sn_seq');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'name') THEN
+        ALTER TABLE courses ADD COLUMN name VARCHAR(255) NOT NULL DEFAULT '';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'semester') THEN
+        ALTER TABLE courses ADD COLUMN semester VARCHAR(50);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'credits') THEN
+        ALTER TABLE courses ADD COLUMN credits FLOAT8;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'is_active') THEN
+        ALTER TABLE courses ADD COLUMN is_active BOOLEAN DEFAULT TRUE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'courses' AND column_name = 'updated_at') THEN
+        ALTER TABLE courses ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    END IF;
+END $$;
+
+-- ============================================
+-- 16. 资源教师关联表
+-- ============================================
+CREATE TABLE IF NOT EXISTS resource_teachers (
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resource_teachers' AND column_name = 'resource_id') THEN
+        ALTER TABLE resource_teachers ADD COLUMN resource_id UUID REFERENCES resources(id) ON DELETE CASCADE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resource_teachers' AND column_name = 'teacher_sn') THEN
+        ALTER TABLE resource_teachers ADD COLUMN teacher_sn BIGINT REFERENCES teachers(sn) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'resource_teachers_pkey' AND conrelid = 'resource_teachers'::regclass
+    ) THEN
+        ALTER TABLE resource_teachers ADD PRIMARY KEY (resource_id, teacher_sn);
+    END IF;
+EXCEPTION
+    WHEN unique_violation THEN
+        RAISE NOTICE '无法添加主键约束：存在重复数据';
+END $$;
+
+-- ============================================
+-- 17. 资源课程关联表
+-- ============================================
+CREATE TABLE IF NOT EXISTS resource_courses (
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resource_courses' AND column_name = 'resource_id') THEN
+        ALTER TABLE resource_courses ADD COLUMN resource_id UUID REFERENCES resources(id) ON DELETE CASCADE;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resource_courses' AND column_name = 'course_sn') THEN
+        ALTER TABLE resource_courses ADD COLUMN course_sn BIGINT REFERENCES courses(sn) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'resource_courses_pkey' AND conrelid = 'resource_courses'::regclass
+    ) THEN
+        ALTER TABLE resource_courses ADD PRIMARY KEY (resource_id, course_sn);
+    END IF;
+EXCEPTION
+    WHEN unique_violation THEN
+        RAISE NOTICE '无法添加主键约束：存在重复数据';
+END $$;
+
+-- ============================================
 -- 为现有用户分配 sn（增量更新支持）
 -- ============================================
 DO $$
@@ -695,6 +816,16 @@ CREATE INDEX IF NOT EXISTS idx_download_logs_resource ON download_logs(resource_
 CREATE INDEX IF NOT EXISTS idx_download_logs_user ON download_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_download_logs_time ON download_logs(downloaded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_images_uploader ON images(uploader_id);
+CREATE INDEX IF NOT EXISTS idx_teachers_sn ON teachers(sn);
+CREATE INDEX IF NOT EXISTS idx_teachers_department ON teachers(department);
+CREATE INDEX IF NOT EXISTS idx_teachers_is_active ON teachers(is_active);
+CREATE INDEX IF NOT EXISTS idx_courses_sn ON courses(sn);
+CREATE INDEX IF NOT EXISTS idx_courses_semester ON courses(semester);
+CREATE INDEX IF NOT EXISTS idx_courses_is_active ON courses(is_active);
+CREATE INDEX IF NOT EXISTS idx_resource_teachers_resource ON resource_teachers(resource_id);
+CREATE INDEX IF NOT EXISTS idx_resource_teachers_teacher ON resource_teachers(teacher_sn);
+CREATE INDEX IF NOT EXISTS idx_resource_courses_resource ON resource_courses(resource_id);
+CREATE INDEX IF NOT EXISTS idx_resource_courses_course ON resource_courses(course_sn);
 
 -- ============================================
 -- 创建触发器
@@ -732,6 +863,18 @@ CREATE TRIGGER update_comments_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_teachers_updated_at ON teachers;
+CREATE TRIGGER update_teachers_updated_at
+    BEFORE UPDATE ON teachers
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_courses_updated_at ON courses;
+CREATE TRIGGER update_courses_updated_at
+    BEFORE UPDATE ON courses
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 -- ============================================
 -- 验证
 -- ============================================
@@ -761,7 +904,15 @@ SELECT 'audit_logs', COUNT(*) FROM information_schema.columns WHERE table_name =
 UNION ALL
 SELECT 'download_logs', COUNT(*) FROM information_schema.columns WHERE table_name = 'download_logs'
 UNION ALL
-SELECT 'images', COUNT(*) FROM information_schema.columns WHERE table_name = 'images';
+SELECT 'images', COUNT(*) FROM information_schema.columns WHERE table_name = 'images'
+UNION ALL
+SELECT 'teachers', COUNT(*) FROM information_schema.columns WHERE table_name = 'teachers'
+UNION ALL
+SELECT 'courses', COUNT(*) FROM information_schema.columns WHERE table_name = 'courses'
+UNION ALL
+SELECT 'resource_teachers', COUNT(*) FROM information_schema.columns WHERE table_name = 'resource_teachers'
+UNION ALL
+SELECT 'resource_courses', COUNT(*) FROM information_schema.columns WHERE table_name = 'resource_courses';
 '''
 
 
@@ -1001,9 +1152,13 @@ def main():
     print("  - audit_logs (审计日志表)")
     print("  - download_logs (下载记录表)")
     print("  - images (图片表)")
+    print("  - teachers (授课教师表)")
+    print("  - courses (课程表)")
+    print("  - resource_teachers (资源教师关联表)")
+    print("  - resource_courses (资源课程关联表)")
     print()
-    print("索引: 30+")
-    print("触发器: 4 (自动更新 updated_at)")
+    print("索引: 40+")
+    print("触发器: 6 (自动更新 updated_at)")
     print()
     print("说明: 此脚本支持增量更新，可重复执行。")
     print()

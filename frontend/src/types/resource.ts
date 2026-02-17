@@ -97,6 +97,24 @@ export interface ResourceDetail {
   updatedAt: string;
   stats: ResourceStats;
   uploaderName?: string;
+  // 授课教师和课程关联
+  teachers?: TeacherInfo[];
+  courses?: CourseInfo[];
+}
+
+// 关联教师信息
+export interface TeacherInfo {
+  sn: number;
+  name: string;
+  department?: string;
+}
+
+// 关联课程信息
+export interface CourseInfo {
+  sn: number;
+  name: string;
+  semester?: string;
+  credits?: number;
 }
 
 // 资源列表响应
@@ -134,6 +152,8 @@ export interface UploadResourceRequest {
   category: ResourceCategoryType;
   tags?: string[];
   description?: string;
+  teacherSns?: number[];
+  courseSns?: number[];
 }
 
 // 上传资源响应

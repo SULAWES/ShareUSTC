@@ -1,4 +1,18 @@
 import request from './request';
+import type {
+  TeacherListItem,
+  TeacherListResponse,
+  CreateTeacherRequest,
+  UpdateTeacherRequest,
+  TeacherListQuery
+} from '@/types/teacher';
+import type {
+  CourseListItem,
+  CourseListResponse,
+  CreateCourseRequest,
+  UpdateCourseRequest,
+  CourseListQuery
+} from '@/types/course';
 
 /**
  * 管理员API封装
@@ -232,6 +246,54 @@ export const getAuditLogs = (query: AuditLogQuery = {}): Promise<AuditLogListRes
   return request.get('/admin/audit-logs', { params: query });
 };
 
+// =====================
+// 教师管理相关
+// =====================
+
+export const getTeacherList = (query: TeacherListQuery = {}): Promise<TeacherListResponse> => {
+  return request.get('/admin/teachers', { params: query });
+};
+
+export const createTeacher = (data: CreateTeacherRequest): Promise<TeacherListItem> => {
+  return request.post('/admin/teachers', data);
+};
+
+export const updateTeacher = (sn: number, data: UpdateTeacherRequest): Promise<TeacherListItem> => {
+  return request.put(`/admin/teachers/${sn}`, data);
+};
+
+export const updateTeacherStatus = (sn: number, isActive: boolean): Promise<TeacherListItem> => {
+  return request.put(`/admin/teachers/${sn}/status`, { isActive });
+};
+
+export const deleteTeacher = (sn: number): Promise<void> => {
+  return request.delete(`/admin/teachers/${sn}`);
+};
+
+// =====================
+// 课程管理相关
+// =====================
+
+export const getCourseList = (query: CourseListQuery = {}): Promise<CourseListResponse> => {
+  return request.get('/admin/courses', { params: query });
+};
+
+export const createCourse = (data: CreateCourseRequest): Promise<CourseListItem> => {
+  return request.post('/admin/courses', data);
+};
+
+export const updateCourse = (sn: number, data: UpdateCourseRequest): Promise<CourseListItem> => {
+  return request.put(`/admin/courses/${sn}`, data);
+};
+
+export const updateCourseStatus = (sn: number, isActive: boolean): Promise<CourseListItem> => {
+  return request.put(`/admin/courses/${sn}/status`, { isActive });
+};
+
+export const deleteCourse = (sn: number): Promise<void> => {
+  return request.delete(`/admin/courses/${sn}`);
+};
+
 // 导出API对象
 export const adminApi = {
   getDashboardStats,
@@ -244,5 +306,17 @@ export const adminApi = {
   auditComment,
   sendNotification,
   getDetailedStats,
-  getAuditLogs
+  getAuditLogs,
+  // 教师管理
+  getTeacherList,
+  createTeacher,
+  updateTeacher,
+  updateTeacherStatus,
+  deleteTeacher,
+  // 课程管理
+  getCourseList,
+  createCourse,
+  updateCourse,
+  updateCourseStatus,
+  deleteCourse
 };

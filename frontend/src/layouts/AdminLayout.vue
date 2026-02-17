@@ -49,7 +49,9 @@ import {
   DataLine,
   List,
   Fold,
-  Expand
+  Expand,
+  User,
+  Reading
 } from '@element-plus/icons-vue';
 
 const isCollapsed = ref(false);
@@ -57,6 +59,8 @@ const isCollapsed = ref(false);
 const menuItems = [
   { path: '/admin', title: '仪表盘', icon: HomeFilled },
   { path: '/admin/users', title: '用户管理', icon: UserFilled },
+  { path: '/admin/teachers', title: '教师管理', icon: User },
+  { path: '/admin/courses', title: '课程管理', icon: Reading },
   { path: '/admin/resources', title: '资源审核', icon: Document },
   { path: '/admin/comments', title: '评论管理', icon: ChatDotSquare },
   { path: '/admin/notifications', title: '发送通知', icon: Bell },

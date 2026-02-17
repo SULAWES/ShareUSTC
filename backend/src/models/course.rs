@@ -1,0 +1,144 @@
+use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use uuid::Uuid;
+
+/// 课程结构体（对应数据库 courses 表）
+#[derive(Debug, Clone, FromRow, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Course {
+    pub id: Uuid,
+    pub sn: i64,
+    pub name: String,
+    pub semester: Option<String>,
+    pub credits: Option<f64>,
+    pub is_active: bool,
+    pub created_at: NaiveDateTime,
+    pub updated_at: NaiveDateTime,
+}
+
+/// 课程响应 DTO
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CourseResponse {
+    pub sn: i64,
+    pub name: String,
+    pub semester: Option<String>,
+    pub credits: Option<f64>,
+    pub is_active: bool,
+}
+
+impl From<Course> for CourseResponse {
+    fn from(course: Course) -> Self {
+        Self {
+            sn: course.sn,
+            name: course.name,
+            semester: course.semester,
+            credits: course.credits,
+            is_active: course.is_active,
+        }
+    }
+}
+
+/// 创建课程请求 DTO
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateCourseRequest {
+    pub name: String,
+    pub semester: Option<String>,
+    pub credits: Option<f64>,
+}
+
+impl CreateCourseRequest {
+    /// 验证请求
+    pub fn validate(&self) -> Result<(), String> {
+        if self.name.trim().is_empty() {
+            return Err("课程名称不能为空".to_string());
+        }
+        if self.name.len() > 255 {
+            return Err("课程名称不能超过255个字符".to_string());
+        }
+        if let Some(ref semester) = self.semester {
+            if semester.len() > 50 {
+                return Err("开课学期不能超过50个字符".to_string());
+            }
+        }
+        if let Some(credits) = self.credits {
+            if credits < 0.0 || credits > 100.0 {
+                return Err("学分必须在0-100之间".to_string());
+            }
+        }
+        Ok(())
+    }
+}
+
+/// 更新课程请求 DTO
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCourseRequest {
+    pub name: Option<String>,
+    pub semester: Option<String>,
+    pub credits: Option<f64>,
+}
+
+impl UpdateCourseRequest {
+    /// 验证请求
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(ref name) = self.name {
+            if name.trim().is_empty() {
+                return Err("课程名称不能为空".to_string());
+            }
+            if name.len() > 255 {
+                return Err("课程名称不能超过255个字符".to_string());
+            }
+        }
+        if let Some(ref semester) = self.semester {
+            if semester.len() > 50 {
+                return Err("开课学期不能超过50个字符".to_string());
+            }
+        }
+        if let Some(credits) = self.credits {
+            if credits < 0.0 || credits > 100.0 {
+                return Err("学分必须在0-100之间".to_string());
+            }
+        }
+        Ok(())
+    }
+}
+
+/// 更新课程状态请求 DTO
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateCourseStatusRequest {
+    pub is_active: bool,
+}
+
+/// 课程列表查询参数
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CourseListQuery {
+    pub page: Option<i32>,
+    pub per_page: Option<i32>,
+    pub semester: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+impl CourseListQuery {
+    pub fn get_page(&self) -> i32 {
+        self.page.unwrap_or(1).max(1)
+    }
+
+    pub fn get_per_page(&self) -> i32 {
+        self.per_page.unwrap_or(20).min(100).max(1)
+    }
+}
+
+/// 课程列表响应 DTO
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CourseListResponse {
+    pub courses: Vec<Course>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+}

@@ -173,6 +173,40 @@ impl ResourceService {
             return Err(ResourceError::DatabaseError(format!("创建统计记录失败: {}", e)));
         }
 
+        // 插入教师关联记录
+        if let Some(teacher_sns) = &request.teacher_sns {
+            for teacher_sn in teacher_sns {
+                if let Err(e) = sqlx::query(
+                    "INSERT INTO resource_teachers (resource_id, teacher_sn) VALUES ($1, $2) ON CONFLICT DO NOTHING"
+                )
+                .bind(resource_id)
+                .bind(teacher_sn)
+                .execute(&mut *tx)
+                .await {
+                    log::warn!("[Resource] 插入教师关联失败 | resource_id={}, teacher_sn={}, error={}", resource_id, teacher_sn, e);
+                    // 非关键错误，继续处理
+                }
+            }
+            log::debug!("[Resource] 教师关联插入完成 | resource_id={}, count={}", resource_id, teacher_sns.len());
+        }
+
+        // 插入课程关联记录
+        if let Some(course_sns) = &request.course_sns {
+            for course_sn in course_sns {
+                if let Err(e) = sqlx::query(
+                    "INSERT INTO resource_courses (resource_id, course_sn) VALUES ($1, $2) ON CONFLICT DO NOTHING"
+                )
+                .bind(resource_id)
+                .bind(course_sn)
+                .execute(&mut *tx)
+                .await {
+                    log::warn!("[Resource] 插入课程关联失败 | resource_id={}, course_sn={}, error={}", resource_id, course_sn, e);
+                    // 非关键错误，继续处理
+                }
+            }
+            log::debug!("[Resource] 课程关联插入完成 | resource_id={}, count={}", resource_id, course_sns.len());
+        }
+
         // 提交事务
         if let Err(e) = tx.commit().await {
             log::error!("[Resource] 提交事务失败 | resource_id={}, error={}", resource_id, e);
@@ -236,6 +270,44 @@ impl ResourceService {
             serde_json::from_value::<Vec<String>>(t.clone()).ok()
         });
 
+        // 获取关联的教师列表
+        let teachers: Vec<super::TeacherInfo> = sqlx::query_as::<_, super::TeacherInfo>(
+            r#"
+            SELECT t.sn, t.name, t.department
+            FROM teachers t
+            INNER JOIN resource_teachers rt ON t.sn = rt.teacher_sn
+            WHERE rt.resource_id = $1 AND t.is_active = true
+            ORDER BY t.sn ASC
+            "#
+        )
+        .bind(resource_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| {
+            log::warn!("[Resource] 获取关联教师失败 | resource_id={}, error={}", resource_id, e);
+            e
+        })
+        .unwrap_or_default();
+
+        // 获取关联的课程列表
+        let courses: Vec<super::CourseInfo> = sqlx::query_as::<_, super::CourseInfo>(
+            r#"
+            SELECT c.sn, c.name, c.semester, c.credits
+            FROM courses c
+            INNER JOIN resource_courses rc ON c.sn = rc.course_sn
+            WHERE rc.resource_id = $1 AND c.is_active = true
+            ORDER BY c.sn ASC
+            "#
+        )
+        .bind(resource_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| {
+            log::warn!("[Resource] 获取关联课程失败 | resource_id={}, error={}", resource_id, e);
+            e
+        })
+        .unwrap_or_default();
+
         Ok(ResourceDetailResponse {
             id: resource.id,
             title: resource.title,
@@ -262,6 +334,8 @@ impl ResourceService {
                 rating_count: stats.rating_count(),
             },
             uploader_name,
+            teachers,
+            courses,
         })
     }
 

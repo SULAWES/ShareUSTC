@@ -6,3 +6,5 @@ pub mod comment;
 pub mod notification;
 pub mod admin;
 pub mod favorite;
+pub mod teacher;
+pub mod course;

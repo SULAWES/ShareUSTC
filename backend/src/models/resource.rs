@@ -297,6 +297,25 @@ impl ResourceStats {
     }
 }
 
+/// 关联教师信息
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TeacherInfo {
+    pub sn: i64,
+    pub name: String,
+    pub department: Option<String>,
+}
+
+/// 关联课程信息
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct CourseInfo {
+    pub sn: i64,
+    pub name: String,
+    pub semester: Option<String>,
+    pub credits: Option<f64>,
+}
+
 /// 资源上传请求 DTO
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -309,6 +328,10 @@ pub struct UploadResourceRequest {
     pub category: ResourceCategory,
     pub tags: Option<Vec<String>>,
     pub description: Option<String>,
+    /// 关联教师编号列表（可选）
+    pub teacher_sns: Option<Vec<i64>>,
+    /// 关联课程编号列表（可选）
+    pub course_sns: Option<Vec<i64>>,
 }
 
 impl UploadResourceRequest {
@@ -369,6 +392,10 @@ pub struct ResourceDetailResponse {
     pub updated_at: NaiveDateTime,
     pub stats: ResourceStatsResponse,
     pub uploader_name: Option<String>,
+    /// 关联的教师列表
+    pub teachers: Vec<TeacherInfo>,
+    /// 关联的课程列表
+    pub courses: Vec<CourseInfo>,
 }
 
 /// 资源统计响应 DTO

@@ -141,6 +141,43 @@
               </div>
             </el-card>
 
+            <!-- 授课教师 -->
+            <el-card v-if="resource.teachers && resource.teachers.length > 0" class="teachers-card" shadow="never">
+              <template #header>
+                <span>授课教师</span>
+              </template>
+              <div class="teachers-list">
+                <div
+                  v-for="teacher in resource.teachers"
+                  :key="teacher.sn"
+                  class="teacher-item"
+                >
+                  <el-icon><User /></el-icon>
+                  <span class="teacher-name">{{ teacher.name }}</span>
+                  <span v-if="teacher.department" class="teacher-dept">({{ teacher.department }})</span>
+                </div>
+              </div>
+            </el-card>
+
+            <!-- 关联课程 -->
+            <el-card v-if="resource.courses && resource.courses.length > 0" class="courses-card" shadow="never">
+              <template #header>
+                <span>关联课程</span>
+              </template>
+              <div class="courses-list">
+                <div
+                  v-for="course in resource.courses"
+                  :key="course.sn"
+                  class="course-item"
+                >
+                  <el-icon><Reading /></el-icon>
+                  <span class="course-name">{{ course.name }}</span>
+                  <span v-if="course.semester" class="course-semester">({{ course.semester }})</span>
+                  <span v-if="course.credits" class="course-credits">{{ course.credits }}学分</span>
+                </div>
+              </div>
+            </el-card>
+
             <!-- 资源信息 -->
             <el-card class="info-card" shadow="never">
               <template #header>
@@ -197,7 +234,8 @@ import {
   View,
   Folder,
   Loading,
-  Edit
+  Edit,
+  User
 } from '@element-plus/icons-vue';
 import { getResourceDetail, downloadResource, deleteResource } from '../../api/resource';
 import { useAuthStore } from '../../stores/auth';
@@ -513,8 +551,77 @@ onMounted(() => {
 .tags-card,
 .info-card,
 .rating-card,
-.comments-card {
+.comments-card,
+.teachers-card,
+.courses-card {
   margin-bottom: 24px;
+}
+
+/* 授课教师列表样式 */
+.teachers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.teacher-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.teacher-item:last-child {
+  border-bottom: none;
+}
+
+.teacher-name {
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+}
+
+.teacher-dept {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+/* 关联课程列表样式 */
+.courses-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.course-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.course-item:last-child {
+  border-bottom: none;
+}
+
+.course-name {
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  flex: 1;
+}
+
+.course-semester {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.course-credits {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  padding: 2px 8px;
+  border-radius: 4px;
 }
 
 .preview-content {
