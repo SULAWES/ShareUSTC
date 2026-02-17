@@ -13,6 +13,7 @@ pub struct Config {
     pub cors_allowed_origins: Vec<String>,
     pub admin_usernames: Vec<String>,
     pub cookie_secure: bool,
+    pub image_base_url: String,
 }
 
 impl Config {
@@ -58,6 +59,11 @@ impl Config {
             cookie_secure: env::var("COOKIE_SECURE")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
+            image_base_url: env::var("IMAGE_BASE_URL")
+                .unwrap_or_else(|_| format!("http://{}:{}",
+                    env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
+                    env::var("SERVER_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080)
+                )),
         }
     }
 
