@@ -175,6 +175,13 @@
           <div class="changelog-item">
             <div class="changelog-date">2026-02-18</div>
             <div class="changelog-content">
+              <span class="changelog-tag tag-feature">新增功能</span>
+              <span class="changelog-text">增加通过课程和教师搜索资料的功能</span>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <div class="changelog-date">2026-02-18</div>
+            <div class="changelog-content">
               <span class="changelog-tag tag-fix">问题修复</span>
               <span class="changelog-text">修复服务器部署后图床的 BaseURL 为 localhost 的错误</span>
             </div>
@@ -190,6 +197,13 @@
             <div class="changelog-date">2026-02-13</div>
             <div class="changelog-content">
               <span class="changelog-tag tag-improve">功能优化</span>
+              <span class="changelog-text">将凭据的存储方由 local storage 改为 cookie </span>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <div class="changelog-date">2026-02-13</div>
+            <div class="changelog-content">
+              <span class="changelog-tag tag-improve">功能优化</span>
               <span class="changelog-text">优化首页设计，显示热门资源</span>
             </div>
           </div>
@@ -198,6 +212,13 @@
             <div class="changelog-content">
               <span class="changelog-tag tag-feature">新增功能</span>
               <span class="changelog-text">上线Markdown在线编辑器，支持图床插入图片</span>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <div class="changelog-date">2026-02-06</div>
+            <div class="changelog-content">
+              <span class="changelog-tag tag-feature">新增功能</span>
+              <span class="changelog-text">完成基础功能的开发</span>
             </div>
           </div>
         </div>
