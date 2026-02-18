@@ -3,6 +3,7 @@ use actix_web::{delete, get, post, web, HttpResponse, Responder};
 use futures_util::StreamExt;
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::db::AppState;
 use crate::models::CurrentUser;
 use crate::services::{ImageError, ImageService};
@@ -64,11 +65,14 @@ pub async fn upload_image(
         }
     };
 
+    // 加载配置用于生成图片 URL
+    let config = Config::from_env();
     // 调用服务上传图片
     match ImageService::upload_image(
         &state.pool,
         &user,
         &state.storage,
+        &config,
         &filename,
         data,
         mime_type.as_deref(),

@@ -215,6 +215,7 @@ pub struct Resource {
     pub ai_reject_reason: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    pub storage_type: Option<String>,
 }
 
 /// 资源统计信息（对应数据库 resource_stats 表）
@@ -400,6 +401,8 @@ pub struct ResourceDetailResponse {
     pub teachers: Vec<TeacherInfo>,
     /// 关联的课程列表
     pub courses: Vec<CourseInfo>,
+    /// 存储类型：local 或 oss
+    pub storage_type: String,
 }
 
 /// 资源统计响应 DTO
@@ -447,6 +450,8 @@ pub struct ResourceListItem {
     pub created_at: NaiveDateTime,
     pub stats: ResourceStatsResponse,
     pub uploader_name: Option<String>,
+    /// 存储类型：local 或 oss
+    pub storage_type: String,
 }
 
 /// 资源列表查询参数

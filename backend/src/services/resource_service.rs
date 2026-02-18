@@ -109,12 +109,11 @@ impl ResourceService {
 
         let file_size = metadata
             .content_length
-            .ok_or_else(|| ResourceError::ValidationError("无法获取文件大小".to_string()))?
-            as i64;
-        if file_size <= 0 {
+            .ok_or_else(|| ResourceError::ValidationError("无法获取文件大小".to_string()))?;
+        if file_size == 0 {
             return Err(ResourceError::ValidationError("文件不能为空".to_string()));
         }
-        if file_size as usize > FileService::MAX_FILE_SIZE {
+        if file_size > FileService::MAX_FILE_SIZE as u64 {
             return Err(ResourceError::ValidationError(format!(
                 "文件大小超过限制。最大允许 100MB，当前 {:.2}MB",
                 file_size as f64 / 1024.0 / 1024.0
@@ -182,7 +181,7 @@ impl ResourceService {
         .bind(oss_key)
         .bind(None::<String>)
         .bind(None::<String>)
-        .bind(file_size)
+        .bind(file_size as i64)
         .bind(ai_result.accuracy_score)
         .bind(audit_status.to_string())
         .bind(if ai_result.passed {
@@ -628,6 +627,7 @@ impl ResourceService {
             uploader_name,
             teachers,
             courses,
+            storage_type: resource.storage_type.clone().unwrap_or_else(|| "local".to_string()),
         })
     }
 
@@ -826,6 +826,11 @@ impl ResourceService {
                     rating_count,
                 },
                 uploader_name: row.try_get("uploader_name").ok(),
+                storage_type: row
+                    .try_get::<Option<String>, _>("storage_type")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| "local".to_string()),
             });
         }
         Ok(resources)
@@ -1137,6 +1142,11 @@ impl ResourceService {
                     rating_count,
                 },
                 uploader_name: row.try_get("uploader_name").ok(),
+                storage_type: row
+                    .try_get::<Option<String>, _>("storage_type")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| "local".to_string()),
             });
         }
 
@@ -1177,13 +1187,13 @@ impl ResourceService {
     }
 
     /// 获取资源文件路径（检查审核状态，用于下载）
-    /// 返回：(file_path, resource_type, title)
+    /// 返回：(file_path, resource_type, title, storage_type)
     pub async fn get_resource_file_path(
         pool: &PgPool,
         resource_id: Uuid,
-    ) -> Result<(String, String, String), ResourceError> {
-        let row: (String, String, String) = sqlx::query_as(
-            "SELECT file_path, resource_type, title FROM resources WHERE id = $1 AND audit_status = 'approved'"
+    ) -> Result<(String, String, String, Option<String>), ResourceError> {
+        let row: (String, String, String, Option<String>) = sqlx::query_as(
+            "SELECT file_path, resource_type, title, storage_type FROM resources WHERE id = $1 AND audit_status = 'approved'"
         )
         .bind(resource_id)
         .fetch_optional(pool)
@@ -1195,12 +1205,13 @@ impl ResourceService {
     }
 
     /// 获取资源文件路径（不检查审核状态，用于预览）
+    /// 返回：(file_path, resource_type, storage_type)
     pub async fn get_resource_file_path_for_preview(
         pool: &PgPool,
         resource_id: Uuid,
-    ) -> Result<(String, String), ResourceError> {
-        let row: (String, String) =
-            sqlx::query_as("SELECT file_path, resource_type FROM resources WHERE id = $1")
+    ) -> Result<(String, String, Option<String>), ResourceError> {
+        let row: (String, String, Option<String>) =
+            sqlx::query_as("SELECT file_path, resource_type, storage_type FROM resources WHERE id = $1")
                 .bind(resource_id)
                 .fetch_optional(pool)
                 .await

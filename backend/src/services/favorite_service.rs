@@ -3,6 +3,9 @@ use std::io::Write;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::config::Config;
+use crate::services::{create_local_storage, StorageBackend, StorageBackendType};
+
 /// 计算平均分辅助函数
 fn calc_avg(total: Option<i32>, count: Option<i32>) -> Option<f64> {
     match (total, count) {
@@ -447,11 +450,12 @@ impl FavoriteService {
     }
 
     /// 获取收藏夹中所有资源的文件路径（用于打包下载）
+    /// 返回: Vec<(资源ID, 标题, 文件路径, 资源类型, 文件大小, 存储类型)>
     pub async fn get_favorite_resource_paths(
         pool: &PgPool,
         favorite_id: Uuid,
         user_id: Uuid,
-    ) -> Result<Vec<(Uuid, String, String, String, i64)>, ResourceError> {
+    ) -> Result<Vec<(Uuid, String, String, String, i64, String)>, ResourceError> {
         // 检查收藏夹是否存在且属于当前用户
         let favorite =
             sqlx::query_as::<_, Favorite>("SELECT * FROM favorites WHERE id = $1 AND user_id = $2")
@@ -464,10 +468,11 @@ impl FavoriteService {
             return Err(ResourceError::NotFound("收藏夹不存在".to_string()));
         }
 
-        // 获取资源文件路径、标题、资源类型和文件大小
-        let rows = sqlx::query_as::<_, (Uuid, String, String, String, i64)>(
+        // 获取资源文件路径、标题、资源类型、文件大小和存储类型
+        let rows = sqlx::query_as::<_, (Uuid, String, String, String, i64, String)>(
             r#"
-            SELECT r.id, r.title, r.file_path, r.resource_type, r.file_size
+            SELECT r.id, r.title, r.file_path, r.resource_type, r.file_size,
+                   COALESCE(r.storage_type, 'local') as storage_type
             FROM favorite_resources fr
             JOIN resources r ON fr.resource_id = r.id
             WHERE fr.favorite_id = $1
@@ -483,14 +488,16 @@ impl FavoriteService {
     /// 打包下载收藏夹资源
     /// 返回 ZIP 文件的字节数据
     /// 限制：最多 100 个文件，总大小不超过 500MB
+    /// 支持混合存储：根据每个资源的实际 storage_type 选择存储后端
     pub async fn pack_favorite_resources(
         pool: &PgPool,
-        storage: &Arc<dyn super::StorageBackend>,
+        storage: &Arc<dyn StorageBackend>,
+        config: &Config,
         favorite_id: Uuid,
         user_id: Uuid,
         favorite_name: &str,
     ) -> Result<(Vec<u8>, String), ResourceError> {
-        // 获取资源文件信息
+        // 获取资源文件信息（包含存储类型）
         let resources = Self::get_favorite_resource_paths(pool, favorite_id, user_id).await?;
 
         if resources.is_empty() {
@@ -508,7 +515,7 @@ impl FavoriteService {
 
         // 计算总文件大小并检查限制
         const MAX_TOTAL_SIZE: i64 = 500 * 1024 * 1024; // 500MB
-        let total_size: i64 = resources.iter().map(|(_, _, _, _, size)| size).sum();
+        let total_size: i64 = resources.iter().map(|(_, _, _, _, size, _)| *size).sum();
         if total_size > MAX_TOTAL_SIZE {
             return Err(ResourceError::ValidationError(format!(
                 "收藏夹资源总大小超过限制，最大支持 500MB，当前 {:.2}MB",
@@ -528,18 +535,63 @@ impl FavoriteService {
             let mut file_names: std::collections::HashMap<String, usize> =
                 std::collections::HashMap::new();
 
-            for (resource_id, title, file_path, resource_type, _) in &resources {
-                // 读取文件内容
-                let file_content = match storage.read_file(file_path).await {
-                    Ok(content) => content,
-                    Err(e) => {
-                        log::warn!(
-                            "读取资源文件失败: resource_id={}, path={}, error={}",
-                            resource_id,
-                            file_path,
-                            e
-                        );
-                        continue; // 跳过无法读取的文件
+            for (resource_id, title, file_path, resource_type, _, storage_type) in &resources {
+                // 根据存储类型选择正确的存储后端读取文件
+                let file_content = if storage_type == "oss" {
+                    // OSS 存储：使用主 storage（如果是 OSS 模式）或创建 OSS 存储
+                    if storage.backend_type() == StorageBackendType::Oss {
+                        match storage.read_file(file_path).await {
+                            Ok(content) => content,
+                            Err(e) => {
+                                log::warn!(
+                                    "读取 OSS 资源文件失败: resource_id={}, path={}, error={}",
+                                    resource_id, file_path, e
+                                );
+                                continue; // 跳过无法读取的文件
+                            }
+                        }
+                    } else {
+                        // 当前是 local 模式，但需要读取 OSS 文件
+                        // 创建临时 OSS 存储实例
+                        match crate::services::create_storage_backend(config) {
+                            Ok(oss_storage) if oss_storage.backend_type() == StorageBackendType::Oss => {
+                                match oss_storage.read_file(file_path).await {
+                                    Ok(content) => content,
+                                    Err(e) => {
+                                        log::warn!(
+                                            "读取 OSS 资源文件失败: resource_id={}, path={}, error={}",
+                                            resource_id, file_path, e
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
+                            _ => {
+                                log::warn!(
+                                    "无法创建 OSS 存储实例来读取资源: resource_id={}",
+                                    resource_id
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                } else {
+                    // 本地存储：使用本地存储实例读取
+                    match create_local_storage(config) {
+                        Ok(local_storage) => match local_storage.read_file(file_path).await {
+                            Ok(content) => content,
+                            Err(e) => {
+                                log::warn!(
+                                    "读取本地资源文件失败: resource_id={}, path={}, error={}",
+                                    resource_id, file_path, e
+                                );
+                                continue; // 跳过无法读取的文件
+                            }
+                        },
+                        Err(e) => {
+                            log::error!("创建本地存储失败: error={}", e);
+                            continue;
+                        }
                     }
                 };
 

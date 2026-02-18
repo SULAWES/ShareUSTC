@@ -14,6 +14,7 @@ pub struct Image {
     pub file_size: Option<i32>,
     pub mime_type: Option<String>,
     pub created_at: NaiveDateTime,
+    pub storage_type: Option<String>,
 }
 
 /// 图片上传响应 DTO
@@ -39,6 +40,7 @@ pub struct ImageInfoResponse {
     pub file_size: Option<i32>,
     pub mime_type: Option<String>,
     pub created_at: NaiveDateTime,
+    pub storage_type: String,
 }
 
 /// 图片列表响应 DTO
@@ -63,22 +65,33 @@ impl Image {
     }
 }
 
-impl From<Image> for ImageInfoResponse {
-    fn from(image: Image) -> Self {
-        let base_url =
-            std::env::var("IMAGE_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
-
+impl ImageInfoResponse {
+    /// 从 Image 创建响应，需要传入 base_url
+    pub fn from_image_with_base_url(image: Image, base_url: &str) -> Self {
         ImageInfoResponse {
             id: image.id,
-            url: image.get_public_url(&base_url),
+            url: image.get_public_url(base_url),
             markdown_link: image.get_markdown_link(
-                &base_url,
+                base_url,
                 &image.original_name.as_deref().unwrap_or("image"),
             ),
             original_name: image.original_name.clone(),
             file_size: image.file_size,
             mime_type: image.mime_type.clone(),
             created_at: image.created_at,
+            storage_type: image.storage_type.clone().unwrap_or_else(|| "local".to_string()),
         }
+    }
+}
+
+// 保留 From 实现，使用默认的 base_url（用于向后兼容）
+impl From<Image> for ImageInfoResponse {
+    fn from(image: Image) -> Self {
+        // 尝试从环境变量获取，否则使用默认值
+        // 注意：这个实现保留用于向后兼容，新代码应该使用 from_image_with_base_url
+        let base_url =
+            std::env::var("IMAGE_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+
+        Self::from_image_with_base_url(image, &base_url)
     }
 }

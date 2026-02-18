@@ -66,6 +66,15 @@ export interface ResourceStats {
   ratingCount: number;
 }
 
+// 存储类型
+export type StorageType = 'local' | 'oss';
+
+// 存储类型显示标签
+export const StorageTypeLabels: Record<StorageType, string> = {
+  local: '本地存储',
+  oss: '云端存储'
+};
+
 // 资源列表项
 export interface ResourceListItem {
   id: string;
@@ -78,6 +87,7 @@ export interface ResourceListItem {
   createdAt: string;
   stats: ResourceStats;
   uploaderName?: string;
+  storageType: StorageType;
 }
 
 // 资源详情
@@ -100,6 +110,7 @@ export interface ResourceDetail {
   // 授课教师和课程关联
   teachers?: TeacherInfo[];
   courses?: CourseInfo[];
+  storageType: StorageType;
 }
 
 // 关联教师信息

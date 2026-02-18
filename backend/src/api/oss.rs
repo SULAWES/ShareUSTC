@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
+use crate::config::Config;
 use crate::db::AppState;
 use crate::models::{resource::ResourceType, resource::UploadResourceRequest, CurrentUser};
 use crate::services::{
@@ -211,7 +212,7 @@ async fn resource_upload_callback(
     payload: web::Json<ResourceUploadCallbackRequest>,
 ) -> impl Responder {
     if state.storage.backend_type() != StorageBackendType::Oss {
-        return bad_request("当前不是 OSS 存储模式");
+        return internal_error("当前未启用OSS存储模式");
     }
 
     if !key_in_scope(&payload.oss_key, "resources") {
@@ -280,7 +281,7 @@ async fn image_upload_callback(
     payload: web::Json<ImageUploadCallbackRequest>,
 ) -> impl Responder {
     if state.storage.backend_type() != StorageBackendType::Oss {
-        return bad_request("当前不是 OSS 存储模式");
+        return internal_error("当前未启用OSS存储模式");
     }
 
     if !key_in_scope(&payload.oss_key, "images") {
@@ -293,10 +294,13 @@ async fn image_upload_callback(
             Err(msg) => return bad_request(&format!("上传图片不存在或不可访问: {}", msg)),
         };
 
+    // 加载配置用于生成图片 URL
+    let config = Config::from_env();
     match ImageService::create_image_from_oss_callback(
         &state.pool,
         &user,
         &state.storage,
+        &config,
         &payload.oss_key,
         payload.original_name.as_deref(),
         metadata,
@@ -322,9 +326,10 @@ async fn image_upload_callback(
 
 fn key_in_scope(key: &str, scope: &str) -> bool {
     let normalized = key.trim_start_matches('/');
-    normalized.starts_with(&format!("{}/", scope))
-        || normalized.contains(&format!("/{}/", scope))
-        || normalized == scope
+    // 严格检查：路径必须以 scope 目录开头
+    // 防止路径遍历如：resources/../malicious.exe 或 evil/resources/../../data
+    let parts: Vec<&str> = normalized.split('/').collect();
+    parts.get(0) == Some(&scope)
 }
 
 fn pick_extension(folder: &str, file_name: &str, content_type: Option<&str>) -> Option<String> {

@@ -258,7 +258,8 @@ const uploadFile = async (file: File) => {
       markdownLink: result.markdownLink,
       originalName: result.originalName,
       fileSize: result.fileSize,
-      createdAt: result.createdAt
+      createdAt: result.createdAt,
+      storageType: (result as any).storageType || 'local'
     };
 
     lastUploadedImage.value = image;

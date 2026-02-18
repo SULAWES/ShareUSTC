@@ -244,7 +244,10 @@ impl StorageBackend for LocalStorage {
         })
     }
 
-    fn get_file_url<'a>(&'a self, key: &'a str, _expires_secs: u64) -> StorageFuture<'a, String> {
+    fn get_file_url<'a>(&'a self, key: &'a str, expires_secs: u64) -> StorageFuture<'a, String> {
+        // 注意：本地存储不使用 expires_secs 参数，但保持签名一致
+        // expires_secs 仅对 OSS 签名 URL 有效
+        let _ = expires_secs;
         Box::pin(async move {
             let relative = self.relative_key(key);
             if relative.is_empty() {
@@ -314,6 +317,14 @@ pub fn create_storage_backend(config: &Config) -> Result<Arc<dyn StorageBackend>
         return Ok(Arc::new(storage));
     }
 
+    Ok(Arc::new(LocalStorage::new(
+        config.file_upload_path.clone(),
+        config.image_base_url.clone(),
+    )))
+}
+
+/// 创建一个本地存储实例，用于在OSS模式下读取本地文件
+pub fn create_local_storage(config: &Config) -> Result<Arc<dyn StorageBackend>, StorageError> {
     Ok(Arc::new(LocalStorage::new(
         config.file_upload_path.clone(),
         config.image_base_url.clone(),

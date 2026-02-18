@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::models::{
     image::{Image, ImageInfoResponse, ImageListResponse, UploadImageResponse},
     CurrentUser,
@@ -51,6 +52,7 @@ impl ImageService {
         pool: &PgPool,
         user: &CurrentUser,
         storage: &Arc<dyn super::StorageBackend>,
+        config: &Config,
         oss_key: &str,
         original_name: Option<&str>,
         metadata: super::StorageFileMetadata,
@@ -125,8 +127,7 @@ impl ImageService {
             }
         };
 
-        let base_url =
-            std::env::var("IMAGE_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+        let base_url = &config.image_base_url;
         let fallback_name = original_name.unwrap_or("image");
         Ok(UploadImageResponse {
             id: image.id,
@@ -142,6 +143,7 @@ impl ImageService {
         pool: &PgPool,
         user: &CurrentUser,
         storage: &Arc<dyn super::StorageBackend>,
+        config: &Config,
         file_name: &str,
         file_data: Vec<u8>,
         mime_type: Option<&str>,
@@ -222,10 +224,9 @@ impl ImageService {
             }
         };
 
-        let base_url =
-            std::env::var("IMAGE_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
-        let url = image.get_public_url(&base_url);
-        let markdown_link = image.get_markdown_link(&base_url, file_name);
+        let base_url = &config.image_base_url;
+        let url = image.get_public_url(base_url);
+        let markdown_link = image.get_markdown_link(base_url, file_name);
 
         Ok(UploadImageResponse {
             id: image.id,
@@ -323,9 +324,9 @@ impl ImageService {
     pub async fn get_image_path(
         pool: &PgPool,
         image_id: Uuid,
-    ) -> Result<(String, Option<String>), ImageError> {
-        let row: (String, Option<String>) =
-            sqlx::query_as("SELECT file_path, mime_type FROM images WHERE id = $1")
+    ) -> Result<(String, Option<String>, Option<String>), ImageError> {
+        let row: (String, Option<String>, Option<String>) =
+            sqlx::query_as("SELECT file_path, mime_type, storage_type FROM images WHERE id = $1")
                 .bind(image_id)
                 .fetch_optional(pool)
                 .await

@@ -408,6 +408,11 @@ impl UserService {
                     rating_count,
                 },
                 uploader_name: row.try_get("uploader_name").ok(),
+                storage_type: row
+                    .try_get::<Option<String>, _>("storage_type")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_else(|| "local".to_string()),
             });
         }
 

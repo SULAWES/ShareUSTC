@@ -13,7 +13,7 @@ mod models;
 mod services;
 mod utils;
 
-use crate::utils::not_found;
+use crate::utils::{internal_error, not_found};
 use config::Config;
 use db::AppState;
 use middleware::{JwtAuth, PublicPathRule};
@@ -50,54 +50,78 @@ async fn health_check() -> impl Responder {
 }
 
 /// 获取图片文件（公开访问）
+/// 使用后端代理模式读取文件，避免浏览器直接访问 OSS 产生 CORS 问题
 #[get("/images/{image_id}")]
 async fn serve_image(data: web::Data<AppState>, path: web::Path<Uuid>) -> impl Responder {
+    use crate::services::StorageBackendType;
+
     let image_id = path.into_inner();
 
-    // 从数据库获取图片路径
+    // 从数据库获取图片路径和存储类型
     match services::ImageService::get_image_path(&data.pool, image_id).await {
-        Ok((file_path, mime_type)) => {
-            match data.storage.backend_type() {
-                services::StorageBackendType::Oss => {
-                    let expires_secs = data.storage.default_signed_url_expiry();
-                    match data.storage.get_file_url(&file_path, expires_secs).await {
-                        Ok(image_url) => HttpResponse::Found()
-                            .insert_header(("Location", image_url))
-                            .finish(),
-                        Err(e) => {
+        Ok((file_path, mime_type, storage_type)) => {
+            // 根据图片实际的存储类型选择正确的存储后端读取文件
+            // 使用后端代理模式，避免浏览器直接访问 OSS 产生 CORS 问题
+            let is_oss = storage_type.as_deref() == Some("oss");
+
+            let read_result = if is_oss {
+                // OSS 存储：使用主 storage（如果是 OSS 模式）或创建 OSS 存储实例
+                if data.storage.backend_type() == StorageBackendType::Oss {
+                    data.storage.read_file(&file_path).await
+                } else {
+                    // 当前是 local 模式，但需要读取 OSS 文件
+                    let config = config::Config::from_env();
+                    match services::create_storage_backend(&config) {
+                        Ok(oss_storage) if oss_storage.backend_type() == StorageBackendType::Oss => {
+                            oss_storage.read_file(&file_path).await
+                        }
+                        _ => {
                             log::warn!(
-                                "[Image] 生成 OSS 图片链接失败 | image_id={}, path={}, error={}",
-                                image_id,
-                                file_path,
-                                e
+                                "[Image] 无法创建 OSS 存储实例来读取图片 | image_id={}",
+                                image_id
                             );
-                            not_found("图片不存在")
+                            return internal_error("无法读取 OSS 图片");
                         }
                     }
                 }
-                services::StorageBackendType::Local => {
-                    match data.storage.read_file(&file_path).await {
-                        Ok(file_content) => {
-                            // 根据MIME类型设置Content-Type
-                            let content_type = mime_type
-                                .map(|m| m.parse::<mime::Mime>().ok())
-                                .flatten()
-                                .unwrap_or(mime::APPLICATION_OCTET_STREAM);
-
-                            HttpResponse::Ok()
-                                .content_type(content_type)
-                                .body(file_content)
-                        }
+            } else {
+                // 本地存储：使用主 storage（如果是 Local 模式）或创建本地存储实例
+                if data.storage.backend_type() == StorageBackendType::Local {
+                    data.storage.read_file(&file_path).await
+                } else {
+                    // 当前是 OSS 模式，但需要读取本地文件
+                    let config = config::Config::from_env();
+                    match services::create_local_storage(&config) {
+                        Ok(local_storage) => local_storage.read_file(&file_path).await,
                         Err(e) => {
-                            log::warn!(
-                                "[Image] 读取图片文件失败 | image_id={}, path={}, error={}",
-                                image_id,
-                                file_path,
-                                e
-                            );
-                            not_found("图片文件不存在")
+                            log::error!("[Image] 创建本地存储失败 | error={}", e);
+                            return internal_error("无法访问本地存储");
                         }
                     }
+                }
+            };
+
+            match read_result {
+                Ok(file_content) => {
+                    // 根据MIME类型设置Content-Type
+                    let content_type = mime_type
+                        .map(|m| m.parse::<mime::Mime>().ok())
+                        .flatten()
+                        .unwrap_or(mime::APPLICATION_OCTET_STREAM);
+
+                    HttpResponse::Ok()
+                        .content_type(content_type)
+                        .body(file_content)
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[Image] 读取图片文件失败 | image_id={}, path={}, storage={}, error={}",
+                        image_id,
+                        file_path,
+                        if is_oss { "oss" } else { "local" },
+                        e
+                    );
+                    not_found("图片不存在")
                 }
             }
         }

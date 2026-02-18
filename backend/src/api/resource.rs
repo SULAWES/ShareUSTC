@@ -330,74 +330,90 @@ pub async fn download_resource(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    // 获取资源文件路径
+    // 获取资源文件路径和存储类型
     match ResourceService::get_resource_file_path(&state.pool, resource_id).await {
-        Ok((file_path, resource_type, title)) => {
+        Ok((file_path, resource_type, title, storage_type)) => {
             let user_id = user.as_ref().map(|u| u.id);
             let content_type = crate::services::FileService::get_mime_type_by_type(&resource_type);
             let extension = crate::services::FileService::get_extension_by_type(&resource_type);
             let filename = format!("{}.{}", sanitize_filename(&title), extension);
             let content_disposition = build_content_disposition(&filename);
 
-            match state.storage.backend_type() {
-                StorageBackendType::Oss => {
-                    let expires_secs = state.storage.default_signed_url_expiry();
-                    match state
-                        .storage
-                        .get_download_url(&file_path, &filename, expires_secs)
-                        .await
-                    {
-                        Ok(download_url) => {
-                            record_download_events(&state, resource_id, user_id, &title, &req)
-                                .await;
-                            HttpResponse::Found()
-                                .insert_header(("Location", download_url))
-                                .finish()
-                        }
-                        Err(e) => {
-                            log::warn!(
-                                "[Resource] 生成 OSS 下载链接失败 | resource_id={}, path={}, error={}",
-                                resource_id,
-                                file_path,
-                                e
-                            );
-                            internal_error("生成下载链接失败")
-                        }
-                    }
-                }
-                StorageBackendType::Local => match state.storage.read_file(&file_path).await {
-                    Ok(file_content) => {
-                        record_download_events(&state, resource_id, user_id, &title, &req).await;
+            // 根据资源实际的存储类型决定读取方式
+            let is_oss = storage_type.as_deref() == Some("oss");
 
-                        log::info!(
-                            "[Resource] 资源下载成功 | resource_id={}, user_id={:?}",
-                            resource_id,
-                            user_id
-                        );
-
-                        HttpResponse::Ok()
-                            .content_type(content_type)
-                            .insert_header(("Content-Disposition", content_disposition))
-                            .body(file_content)
-                    }
-                    Err(StorageError::NotFound(_)) => {
-                        log::warn!(
-                            "[Resource] 下载文件不存在 | resource_id={}, path={}",
-                            resource_id,
-                            file_path
-                        );
-                        not_found("文件不存在")
+            if is_oss {
+                // OSS 存储：生成签名下载 URL
+                let expires_secs = state.storage.default_signed_url_expiry();
+                match state
+                    .storage
+                    .get_download_url(&file_path, &filename, expires_secs)
+                    .await
+                {
+                    Ok(download_url) => {
+                        record_download_events(&state, resource_id, user_id, &title, &req)
+                            .await;
+                        HttpResponse::Found()
+                            .insert_header(("Location", download_url))
+                            .finish()
                     }
                     Err(e) => {
                         log::warn!(
-                            "[Resource] 读取资源文件失败(下载) | resource_id={}, path={}, error={}",
+                            "[Resource] 生成 OSS 下载链接失败 | resource_id={}, path={}, error={}",
                             resource_id,
                             file_path,
                             e
                         );
-                        internal_error("文件读取失败")
+                        internal_error("生成下载链接失败")
                     }
-                },
+                }
+            } else {
+                // 本地存储：需要创建本地存储实例来读取文件
+                let config = crate::config::Config::from_env();
+                match crate::services::create_local_storage(&config) {
+                    Ok(local_storage) => {
+                        match local_storage.read_file(&file_path).await {
+                            Ok(file_content) => {
+                                record_download_events(&state, resource_id, user_id, &title, &req).await;
+
+                                log::info!(
+                                    "[Resource] 资源下载成功 | resource_id={}, user_id={:?}, storage=local",
+                                    resource_id,
+                                    user_id
+                                );
+
+                                HttpResponse::Ok()
+                                    .content_type(content_type)
+                                    .insert_header(("Content-Disposition", content_disposition))
+                                    .body(file_content)
+                            }
+                            Err(StorageError::NotFound(_)) => {
+                                log::warn!(
+                                    "[Resource] 下载文件不存在 | resource_id={}, path={}",
+                                    resource_id,
+                                    file_path
+                                );
+                                not_found("文件不存在")
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    "[Resource] 读取资源文件失败(下载) | resource_id={}, path={}, error={}",
+                                    resource_id,
+                                    file_path,
+                                    e
+                                );
+                                internal_error("文件读取失败")
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "[Resource] 创建本地存储失败 | error={}",
+                            e
+                        );
+                        internal_error("无法访问本地存储")
+                    }
+                }
             }
         }
         Err(e) => {
@@ -501,6 +517,7 @@ fn build_content_disposition(filename: &str) -> String {
 }
 
 /// 获取资源文件内容（用于预览）
+/// 使用后端代理模式读取文件，避免浏览器直接访问 OSS 产生 CORS 问题
 #[get("/resources/{resource_id}/content")]
 pub async fn get_resource_content(
     state: web::Data<AppState>,
@@ -508,21 +525,64 @@ pub async fn get_resource_content(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    // 获取资源文件路径（预览不检查审核状态）
+    // 获取资源文件路径和存储类型（预览不检查审核状态）
     match ResourceService::get_resource_file_path_for_preview(&state.pool, resource_id).await {
-        Ok((file_path, resource_type)) => {
-            match state.storage.read_file(&file_path).await {
+        Ok((file_path, resource_type, storage_type)) => {
+            // 根据资源实际的存储类型选择正确的存储后端读取文件
+            // 使用后端代理模式，避免浏览器直接访问 OSS 产生 CORS 问题
+            let is_oss = storage_type.as_deref() == Some("oss");
+
+            let read_result = if is_oss {
+                // OSS 存储：使用主 storage（如果是 OSS 模式）或创建 OSS 存储实例
+                if state.storage.backend_type() == StorageBackendType::Oss {
+                    state.storage.read_file(&file_path).await
+                } else {
+                    // 当前是 local 模式，但需要读取 OSS 文件
+                    // 创建临时 OSS 存储实例
+                    let config = crate::config::Config::from_env();
+                    match crate::services::create_storage_backend(&config) {
+                        Ok(oss_storage) if oss_storage.backend_type() == StorageBackendType::Oss => {
+                            oss_storage.read_file(&file_path).await
+                        }
+                        _ => {
+                            log::warn!(
+                                "[Resource] 无法创建 OSS 存储实例来读取资源 | resource_id={}",
+                                resource_id
+                            );
+                            return internal_error("无法读取 OSS 资源");
+                        }
+                    }
+                }
+            } else {
+                // 本地存储：使用主 storage（如果是 Local 模式）或创建本地存储实例
+                if state.storage.backend_type() == StorageBackendType::Local {
+                    state.storage.read_file(&file_path).await
+                } else {
+                    // 当前是 OSS 模式，但需要读取本地文件
+                    let config = crate::config::Config::from_env();
+                    match crate::services::create_local_storage(&config) {
+                        Ok(local_storage) => local_storage.read_file(&file_path).await,
+                        Err(e) => {
+                            log::error!("[Resource] 创建本地存储失败 | error={}", e);
+                            return internal_error("无法访问本地存储");
+                        }
+                    }
+                }
+            };
+
+            match read_result {
                 Ok(file_content) => {
                     // 获取 MIME 类型 - 优先使用 resource_type，因为它更准确
                     let content_type =
                         crate::services::FileService::get_mime_type_by_type(&resource_type);
 
                     log::debug!(
-                        "[Resource] 预览资源 | resource_id={}, path={}, type={}, mime={}",
+                        "[Resource] 预览资源 | resource_id={}, path={}, type={}, mime={}, storage={}",
                         resource_id,
                         file_path,
                         resource_type,
-                        content_type
+                        content_type,
+                        if is_oss { "oss" } else { "local" }
                     );
 
                     // 返回文件内容（inline 显示，不是下载）

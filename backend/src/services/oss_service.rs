@@ -432,8 +432,8 @@ impl StorageBackend for OssStorage {
         Box::pin(async move { self.delete_object(key).await })
     }
 
-    fn get_file_url<'a>(&'a self, key: &'a str, _expires_secs: u64) -> StorageFuture<'a, String> {
-        Box::pin(async move { self.build_presigned_url("GET", key, _expires_secs, None) })
+    fn get_file_url<'a>(&'a self, key: &'a str, expires_secs: u64) -> StorageFuture<'a, String> {
+        Box::pin(async move { self.build_presigned_url("GET", key, expires_secs, None) })
     }
 
     fn get_download_url<'a>(
@@ -442,8 +442,7 @@ impl StorageBackend for OssStorage {
         filename: &'a str,
         expires_secs: u64,
     ) -> StorageFuture<'a, String> {
-        let download_name = sanitize_ascii_filename(filename);
-        let content_disposition = format!("attachment; filename=\"{}\"", download_name);
+        let content_disposition = build_content_disposition(filename);
         Box::pin(async move {
             self.build_presigned_url("GET", key, expires_secs, Some(content_disposition))
         })
@@ -641,22 +640,37 @@ fn required(value: Option<&str>, env_name: &str) -> Result<String, StorageError>
         .ok_or_else(|| StorageError::Config(format!("缺少配置: {}", env_name)))
 }
 
-fn sanitize_ascii_filename(filename: &str) -> String {
-    let sanitized: String = filename
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
-                ch
-            } else {
-                '_'
+/// 对文件名进行 RFC 5987 编码，用于支持中文等非 ASCII 字符
+/// 参考: https://datatracker.ietf.org/doc/html/rfc5987
+fn encode_rfc5987(filename: &str) -> String {
+    let mut result = String::new();
+    for c in filename.chars() {
+        if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
+            // ASCII 字母数字和常用符号直接保留
+            result.push(c);
+        } else {
+            // 非 ASCII 字符进行 percent-encoding
+            for byte in c.encode_utf8(&mut [0; 4]).bytes() {
+                result.push_str(&format!("%{:02X}", byte));
             }
-        })
-        .collect();
+        }
+    }
+    result
+}
 
-    if sanitized.is_empty() {
-        "download.bin".to_string()
+/// 构建 Content-Disposition 头部值，支持中文文件名
+/// 使用 RFC 5987 编码：filename*=UTF-8''%E4%B8%AD%E6%96%87
+fn build_content_disposition(filename: &str) -> String {
+    // 检查是否包含非 ASCII 字符
+    let has_non_ascii = filename.chars().any(|c| !c.is_ascii());
+
+    if has_non_ascii {
+        // 包含中文等非 ASCII 字符，使用 RFC 5987 编码
+        let encoded = encode_rfc5987(filename);
+        format!("attachment; filename*=UTF-8''{}", encoded)
     } else {
-        sanitized
+        // 纯 ASCII 文件名，直接使用
+        format!("attachment; filename=\"{}\"", filename)
     }
 }
 
