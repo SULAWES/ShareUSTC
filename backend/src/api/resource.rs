@@ -5,12 +5,14 @@ use uuid::Uuid;
 
 use crate::db::AppState;
 use crate::models::{
-    resource::*,
-    CreateRatingRequest, CreateCommentRequest, CommentListQuery,
-    CurrentUser, UpdateResourceContentRequest,
+    resource::*, CommentListQuery, CreateCommentRequest, CreateRatingRequest, CurrentUser,
+    UpdateResourceContentRequest,
 };
-use crate::services::{ResourceService, RatingService, LikeService, CommentService, AuditLogService, ResourceError};
-use crate::utils::{bad_request, forbidden, not_found, internal_error};
+use crate::services::{
+    AuditLogService, CommentService, LikeService, RatingService, ResourceError, ResourceService,
+    StorageBackendType, StorageError,
+};
+use crate::utils::{bad_request, forbidden, internal_error, not_found};
 
 /// 上传资源
 #[post("/resources")]
@@ -28,15 +30,17 @@ pub async fn upload_resource(
         let mut field = match item {
             Ok(field) => field,
             Err(e) => {
-                log::warn!("[Resource] 解析上传数据失败 | user_id={}, error={}", user.id, e);
+                log::warn!(
+                    "[Resource] 解析上传数据失败 | user_id={}, error={}",
+                    user.id,
+                    e
+                );
                 return bad_request("解析上传数据失败");
             }
         };
 
         let content_disposition = field.content_disposition();
-        let field_name = content_disposition
-            .get_name()
-            .unwrap_or("unknown");
+        let field_name = content_disposition.get_name().unwrap_or("unknown");
 
         match field_name {
             "metadata" => {
@@ -46,7 +50,11 @@ pub async fn upload_resource(
                     match chunk {
                         Ok(bytes) => data.extend_from_slice(&bytes),
                         Err(e) => {
-                            log::warn!("[Resource] 读取元数据失败 | user_id={}, error={}", user.id, e);
+                            log::warn!(
+                                "[Resource] 读取元数据失败 | user_id={}, error={}",
+                                user.id,
+                                e
+                            );
                             return bad_request("读取元数据失败");
                         }
                     }
@@ -56,7 +64,11 @@ pub async fn upload_resource(
                 match serde_json::from_slice::<UploadResourceRequest>(&data) {
                     Ok(req) => metadata = Some(req),
                     Err(e) => {
-                        log::warn!("[Resource] 解析元数据 JSON 失败 | user_id={}, error={}", user.id, e);
+                        log::warn!(
+                            "[Resource] 解析元数据 JSON 失败 | user_id={}, error={}",
+                            user.id,
+                            e
+                        );
                         return bad_request(&format!("元数据格式错误: {}", e));
                     }
                 }
@@ -77,7 +89,11 @@ pub async fn upload_resource(
                     match chunk {
                         Ok(bytes) => data.extend_from_slice(&bytes),
                         Err(e) => {
-                            log::warn!("[Resource] 读取文件数据失败 | user_id={}, error={}", user.id, e);
+                            log::warn!(
+                                "[Resource] 读取文件数据失败 | user_id={}, error={}",
+                                user.id,
+                                e
+                            );
                             return bad_request("读取文件数据失败");
                         }
                     }
@@ -112,6 +128,7 @@ pub async fn upload_resource(
     match ResourceService::upload_resource(
         &state.pool,
         &user,
+        &state.storage,
         metadata,
         &filename,
         data,
@@ -121,9 +138,7 @@ pub async fn upload_resource(
     {
         Ok(response) => {
             // 记录审计日志
-            let ip_address = req
-                .peer_addr()
-                .map(|addr| addr.ip().to_string());
+            let ip_address = req.peer_addr().map(|addr| addr.ip().to_string());
 
             let _ = AuditLogService::log_upload_resource(
                 &state.pool,
@@ -132,22 +147,31 @@ pub async fn upload_resource(
                 &response.title,
                 &response.resource_type,
                 ip_address.as_deref(),
-            ).await;
+            )
+            .await;
 
-            log::info!("[Resource] 资源上传成功 | resource_id={}, user_id={}, title={}",
-                response.id, user.id, response.title);
+            log::info!(
+                "[Resource] 资源上传成功 | resource_id={}, user_id={}, title={}",
+                response.id,
+                user.id,
+                response.title
+            );
 
             HttpResponse::Created().json(response)
         }
         Err(e) => {
-            log::error!("[Resource] 资源上传失败 | user_id={}, error={:?}", user.id, e);
+            log::error!(
+                "[Resource] 资源上传失败 | user_id={}, error={:?}",
+                user.id,
+                e
+            );
             match e {
                 ResourceError::ValidationError(msg) => bad_request(&msg),
                 ResourceError::FileError(msg) => internal_error(&msg),
                 ResourceError::DatabaseError(msg) => {
                     log::error!("数据库错误详情: {}", msg);
                     internal_error(&format!("数据库错误: {}", msg))
-                },
+                }
                 ResourceError::AiError(msg) => internal_error(&msg),
                 ResourceError::NotFound(msg) => not_found(&msg),
                 ResourceError::Unauthorized(msg) => forbidden(&msg),
@@ -205,7 +229,11 @@ pub async fn get_resource_detail(
     match ResourceService::get_resource_detail(&state.pool, resource_id).await {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => {
-            log::warn!("[Resource] 获取资源详情失败 | resource_id={}, error={}", resource_id, e);
+            log::warn!(
+                "[Resource] 获取资源详情失败 | resource_id={}, error={}",
+                resource_id,
+                e
+            );
             match e {
                 ResourceError::NotFound(msg) => not_found(&msg),
                 _ => internal_error("获取资源详情失败"),
@@ -224,14 +252,16 @@ pub async fn delete_resource(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    log::info!("[Resource] 删除资源 | resource_id={}, user_id={}", resource_id, user.id);
+    log::info!(
+        "[Resource] 删除资源 | resource_id={}, user_id={}",
+        resource_id,
+        user.id
+    );
 
-    match ResourceService::delete_resource(&state.pool, &user, resource_id).await {
+    match ResourceService::delete_resource(&state.pool, &user, &state.storage, resource_id).await {
         Ok(title) => {
             // 获取 IP 地址
-            let ip_address = req
-                .peer_addr()
-                .map(|addr| addr.ip().to_string());
+            let ip_address = req.peer_addr().map(|addr| addr.ip().to_string());
 
             // 记录审计日志
             let _ = AuditLogService::log_delete_resource(
@@ -240,14 +270,24 @@ pub async fn delete_resource(
                 resource_id,
                 &title,
                 ip_address.as_deref(),
-            ).await;
+            )
+            .await;
 
-            log::info!("[Resource] 资源删除成功 | resource_id={}, user_id={}", resource_id, user.id);
+            log::info!(
+                "[Resource] 资源删除成功 | resource_id={}, user_id={}",
+                resource_id,
+                user.id
+            );
 
             HttpResponse::NoContent().finish()
         }
         Err(e) => {
-            log::warn!("[Resource] 删除资源失败 | resource_id={}, user_id={}, error={}", resource_id, user.id, e);
+            log::warn!(
+                "[Resource] 删除资源失败 | resource_id={}, user_id={}, error={}",
+                resource_id,
+                user.id,
+                e
+            );
             match e {
                 ResourceError::NotFound(msg) => not_found(&msg),
                 ResourceError::Unauthorized(msg) => forbidden(&msg),
@@ -270,7 +310,11 @@ pub async fn get_my_resources(
     match ResourceService::get_user_resources(&state.pool, user.id, page, per_page).await {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => {
-            log::warn!("[Resource] 获取我的资源列表失败 | user_id={}, error={}", user.id, e);
+            log::warn!(
+                "[Resource] 获取我的资源列表失败 | user_id={}, error={}",
+                user.id,
+                e
+            );
             internal_error("获取资源列表失败")
         }
     }
@@ -286,77 +330,130 @@ pub async fn download_resource(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    // 获取资源文件路径
+    // 获取资源文件路径和存储类型
     match ResourceService::get_resource_file_path(&state.pool, resource_id).await {
-        Ok((file_path, resource_type, title)) => {
-            // 读取文件
-            match crate::services::FileService::read_resource_file(&file_path).await {
-                Ok(file_content) => {
-                    // 增加下载次数
-                    let _ = ResourceService::increment_downloads(&state.pool, resource_id).await;
+        Ok((file_path, resource_type, title, storage_type)) => {
+            let user_id = user.as_ref().map(|u| u.id);
+            let content_type = crate::services::FileService::get_mime_type_by_type(&resource_type);
+            let extension = crate::services::FileService::get_extension_by_type(&resource_type);
+            let filename = format!("{}.{}", sanitize_filename(&title), extension);
+            let content_disposition = build_content_disposition(&filename);
 
-                    // 记录下载日志
-                    let user_id = user.as_ref().map(|u| u.id);
+            // 根据资源实际的存储类型决定读取方式
+            let is_oss = storage_type.as_deref() == Some("oss");
 
-                    // 获取真实 IP 地址
-                    let ip_address = req
-                        .peer_addr()
-                        .map(|addr| addr.ip().to_string())
-                        .unwrap_or_else(|| "0.0.0.0".to_string());
-
-                    // 调用 Service 层记录下载日志
-                    let _ = ResourceService::record_download(
-                        &state.pool,
-                        resource_id,
-                        user_id,
-                        &ip_address
-                    ).await;
-
-                    // 记录审计日志
-                    let _ = AuditLogService::log_download_resource(
-                        &state.pool,
-                        user_id,
-                        resource_id,
-                        &title,
-                        Some(&ip_address),
-                    ).await;
-
-                    // 设置 Content-Type 和 Content-Disposition
-                    // 使用 resource_type 获取 MIME 类型，因为它更准确
-                    let content_type = crate::services::FileService::get_mime_type_by_type(&resource_type);
-
-                    // 生成下载文件名：使用资源标题 + 正确的扩展名
-                    let extension = crate::services::FileService::get_extension_by_type(&resource_type);
-                    let filename = format!("{}.{}", sanitize_filename(&title), extension);
-
-                    // 构建 Content-Disposition 头
-                    let content_disposition = build_content_disposition(&filename);
-
-                    log::info!("[Resource] 资源下载成功 | resource_id={}, user_id={:?}",
-                        resource_id, user.as_ref().map(|u| u.id));
-
-                    HttpResponse::Ok()
-                        .content_type(content_type)
-                        .insert_header((
-                            "Content-Disposition",
-                            content_disposition,
-                        ))
-                        .body(file_content)
+            if is_oss {
+                // OSS 存储：生成签名下载 URL
+                let expires_secs = state.storage.default_signed_url_expiry();
+                match state
+                    .storage
+                    .get_download_url(&file_path, &filename, expires_secs)
+                    .await
+                {
+                    Ok(download_url) => {
+                        record_download_events(&state, resource_id, user_id, &title, &req)
+                            .await;
+                        HttpResponse::Found()
+                            .insert_header(("Location", download_url))
+                            .finish()
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[Resource] 生成 OSS 下载链接失败 | resource_id={}, path={}, error={}",
+                            resource_id,
+                            file_path,
+                            e
+                        );
+                        internal_error("生成下载链接失败")
+                    }
                 }
-                Err(e) => {
-                    log::warn!("[Resource] 读取资源文件失败(下载) | resource_id={}, error={}", resource_id, e);
-                    internal_error("文件读取失败")
+            } else {
+                // 本地存储：需要创建本地存储实例来读取文件
+                let config = crate::config::Config::from_env();
+                match crate::services::create_local_storage(&config) {
+                    Ok(local_storage) => {
+                        match local_storage.read_file(&file_path).await {
+                            Ok(file_content) => {
+                                record_download_events(&state, resource_id, user_id, &title, &req).await;
+
+                                log::info!(
+                                    "[Resource] 资源下载成功 | resource_id={}, user_id={:?}, storage=local",
+                                    resource_id,
+                                    user_id
+                                );
+
+                                HttpResponse::Ok()
+                                    .content_type(content_type)
+                                    .insert_header(("Content-Disposition", content_disposition))
+                                    .body(file_content)
+                            }
+                            Err(StorageError::NotFound(_)) => {
+                                log::warn!(
+                                    "[Resource] 下载文件不存在 | resource_id={}, path={}",
+                                    resource_id,
+                                    file_path
+                                );
+                                not_found("文件不存在")
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    "[Resource] 读取资源文件失败(下载) | resource_id={}, path={}, error={}",
+                                    resource_id,
+                                    file_path,
+                                    e
+                                );
+                                internal_error("文件读取失败")
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "[Resource] 创建本地存储失败 | error={}",
+                            e
+                        );
+                        internal_error("无法访问本地存储")
+                    }
                 }
             }
         }
         Err(e) => {
-            log::warn!("[Resource] 获取资源文件路径失败(下载) | resource_id={}, error={}", resource_id, e);
+            log::warn!(
+                "[Resource] 获取资源文件路径失败(下载) | resource_id={}, error={}",
+                resource_id,
+                e
+            );
             match e {
                 ResourceError::NotFound(msg) => not_found(&msg),
                 _ => internal_error("获取资源失败"),
             }
         }
     }
+}
+
+async fn record_download_events(
+    state: &web::Data<AppState>,
+    resource_id: Uuid,
+    user_id: Option<Uuid>,
+    title: &str,
+    req: &HttpRequest,
+) {
+    let _ = ResourceService::increment_downloads(&state.pool, resource_id).await;
+
+    let ip_address = req
+        .peer_addr()
+        .map(|addr| addr.ip().to_string())
+        .unwrap_or_else(|| "0.0.0.0".to_string());
+
+    let _ = ResourceService::record_download(&state.pool, resource_id, user_id, &ip_address).await;
+
+    let _ = AuditLogService::log_download_resource(
+        &state.pool,
+        user_id,
+        resource_id,
+        title,
+        Some(&ip_address),
+    )
+    .await;
 }
 
 /// 清理文件名，移除不合法字符
@@ -412,11 +509,15 @@ fn build_content_disposition(filename: &str) -> String {
 
         // 同时提供 filename 和 filename*
         // filename* 优先被现代浏览器使用，能正确显示中文
-        format!("attachment; filename*=UTF-8''{}; filename=\"{}\"", encoded, filename)
+        format!(
+            "attachment; filename*=UTF-8''{}; filename=\"{}\"",
+            encoded, filename
+        )
     }
 }
 
 /// 获取资源文件内容（用于预览）
+/// 使用后端代理模式读取文件，避免浏览器直接访问 OSS 产生 CORS 问题
 #[get("/resources/{resource_id}/content")]
 pub async fn get_resource_content(
     state: web::Data<AppState>,
@@ -424,17 +525,65 @@ pub async fn get_resource_content(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    // 获取资源文件路径（预览不检查审核状态）
+    // 获取资源文件路径和存储类型（预览不检查审核状态）
     match ResourceService::get_resource_file_path_for_preview(&state.pool, resource_id).await {
-        Ok((file_path, resource_type)) => {
-            // 读取文件
-            match crate::services::FileService::read_resource_file(&file_path).await {
+        Ok((file_path, resource_type, storage_type)) => {
+            // 根据资源实际的存储类型选择正确的存储后端读取文件
+            // 使用后端代理模式，避免浏览器直接访问 OSS 产生 CORS 问题
+            let is_oss = storage_type.as_deref() == Some("oss");
+
+            let read_result = if is_oss {
+                // OSS 存储：使用主 storage（如果是 OSS 模式）或创建 OSS 存储实例
+                if state.storage.backend_type() == StorageBackendType::Oss {
+                    state.storage.read_file(&file_path).await
+                } else {
+                    // 当前是 local 模式，但需要读取 OSS 文件
+                    // 创建临时 OSS 存储实例
+                    let config = crate::config::Config::from_env();
+                    match crate::services::create_storage_backend(&config) {
+                        Ok(oss_storage) if oss_storage.backend_type() == StorageBackendType::Oss => {
+                            oss_storage.read_file(&file_path).await
+                        }
+                        _ => {
+                            log::warn!(
+                                "[Resource] 无法创建 OSS 存储实例来读取资源 | resource_id={}",
+                                resource_id
+                            );
+                            return internal_error("无法读取 OSS 资源");
+                        }
+                    }
+                }
+            } else {
+                // 本地存储：使用主 storage（如果是 Local 模式）或创建本地存储实例
+                if state.storage.backend_type() == StorageBackendType::Local {
+                    state.storage.read_file(&file_path).await
+                } else {
+                    // 当前是 OSS 模式，但需要读取本地文件
+                    let config = crate::config::Config::from_env();
+                    match crate::services::create_local_storage(&config) {
+                        Ok(local_storage) => local_storage.read_file(&file_path).await,
+                        Err(e) => {
+                            log::error!("[Resource] 创建本地存储失败 | error={}", e);
+                            return internal_error("无法访问本地存储");
+                        }
+                    }
+                }
+            };
+
+            match read_result {
                 Ok(file_content) => {
                     // 获取 MIME 类型 - 优先使用 resource_type，因为它更准确
-                    let content_type = crate::services::FileService::get_mime_type_by_type(&resource_type);
+                    let content_type =
+                        crate::services::FileService::get_mime_type_by_type(&resource_type);
 
-                    log::debug!("[Resource] 预览资源 | resource_id={}, path={}, type={}, mime={}",
-                        resource_id, file_path, resource_type, content_type);
+                    log::debug!(
+                        "[Resource] 预览资源 | resource_id={}, path={}, type={}, mime={}, storage={}",
+                        resource_id,
+                        file_path,
+                        resource_type,
+                        content_type,
+                        if is_oss { "oss" } else { "local" }
+                    );
 
                     // 返回文件内容（inline 显示，不是下载）
                     HttpResponse::Ok()
@@ -442,14 +591,31 @@ pub async fn get_resource_content(
                         .insert_header(("Cache-Control", "public, max-age=3600"))
                         .body(file_content)
                 }
+                Err(StorageError::NotFound(_)) => {
+                    log::warn!(
+                        "[Resource] 预览文件不存在 | resource_id={}, path={}",
+                        resource_id,
+                        file_path
+                    );
+                    not_found("文件不存在")
+                }
                 Err(e) => {
-                    log::warn!("[Resource] 读取资源文件失败(预览) | resource_id={}, error={}", resource_id, e);
+                    log::warn!(
+                        "[Resource] 读取资源文件失败(预览) | resource_id={}, path={}, error={}",
+                        resource_id,
+                        file_path,
+                        e
+                    );
                     internal_error("文件读取失败")
                 }
             }
         }
         Err(e) => {
-            log::warn!("[Resource] 获取资源文件路径失败(预览) | resource_id={}, error={}", resource_id, e);
+            log::warn!(
+                "[Resource] 获取资源文件路径失败(预览) | resource_id={}, error={}",
+                resource_id,
+                e
+            );
             match e {
                 ResourceError::NotFound(msg) => not_found(&msg),
                 _ => internal_error("获取资源失败"),
@@ -467,12 +633,19 @@ pub async fn get_resource_raw_content(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    match ResourceService::get_resource_content_raw(&state.pool, &user, resource_id).await {
+    match ResourceService::get_resource_content_raw(&state.pool, &state.storage, &user, resource_id)
+        .await
+    {
         Ok(content) => HttpResponse::Ok().json(serde_json::json!({
             "content": content
         })),
         Err(e) => {
-            log::warn!("[Resource] 获取资源原始内容失败 | resource_id={}, user_id={}, error={}", resource_id, user.id, e);
+            log::warn!(
+                "[Resource] 获取资源原始内容失败 | resource_id={}, user_id={}, error={}",
+                resource_id,
+                user.id,
+                e
+            );
             match e {
                 ResourceError::NotFound(msg) => not_found(&msg),
                 ResourceError::Unauthorized(msg) => forbidden(&msg),
@@ -497,10 +670,23 @@ pub async fn update_resource_content(
         return bad_request(&msg);
     }
 
-    match ResourceService::update_resource_content(&state.pool, &user, resource_id, request.content.clone()).await {
+    match ResourceService::update_resource_content(
+        &state.pool,
+        &user,
+        &state.storage,
+        resource_id,
+        request.content.clone(),
+    )
+    .await
+    {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(e) => {
-            log::warn!("[Resource] 更新资源内容失败 | resource_id={}, user_id={}, error={}", resource_id, user.id, e);
+            log::warn!(
+                "[Resource] 更新资源内容失败 | resource_id={}, user_id={}, error={}",
+                resource_id,
+                user.id,
+                e
+            );
             match e {
                 ResourceError::NotFound(msg) => not_found(&msg),
                 ResourceError::Unauthorized(msg) => forbidden(&msg),
@@ -532,14 +718,14 @@ pub async fn get_hot_resources(
 pub fn config_public(cfg: &mut web::ServiceConfig) {
     // 注意：具体路径必须放在通配路径之前注册
     // 否则 /resources/hot 会被 /resources/{id} 匹配
-    cfg.service(get_hot_resources)   // /resources/hot （先注册具体路径）
-        .service(get_resource_list)   // /resources
-        .service(search_resources)    // /resources/search
+    cfg.service(get_hot_resources) // /resources/hot （先注册具体路径）
+        .service(get_resource_list) // /resources
+        .service(search_resources) // /resources/search
         .service(get_resource_detail) // /resources/{id} （后注册通配路径）
         .service(download_resource)
         .service(get_resource_content)
-        .service(get_like_status)     // 获取点赞状态（支持未登录用户）
-        .service(get_comments)        // 获取评论列表（公开）
+        .service(get_like_status) // 获取点赞状态（支持未登录用户）
+        .service(get_comments) // 获取评论列表（公开）
         .service(get_resource_ratings); // 获取资源评分信息（支持未登录用户）
 }
 
@@ -553,10 +739,22 @@ pub async fn rate_resource(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    match RatingService::create_or_update_rating(&state.pool, resource_id, user.id, request.into_inner()).await {
+    match RatingService::create_or_update_rating(
+        &state.pool,
+        resource_id,
+        user.id,
+        request.into_inner(),
+    )
+    .await
+    {
         Ok(rating) => HttpResponse::Ok().json(rating),
         Err(e) => {
-            log::warn!("[Resource] 评分失败 | resource_id={}, user_id={}, error={}", resource_id, user.id, e);
+            log::warn!(
+                "[Resource] 评分失败 | resource_id={}, user_id={}, error={}",
+                resource_id,
+                user.id,
+                e
+            );
             bad_request("评分失败")
         }
     }
@@ -574,7 +772,12 @@ pub async fn get_my_rating(
     match RatingService::get_user_rating(&state.pool, resource_id, user.id).await {
         Ok(rating) => HttpResponse::Ok().json(rating),
         Err(e) => {
-            log::warn!("[Resource] 获取评分失败 | resource_id={}, user_id={}, error={}", resource_id, user.id, e);
+            log::warn!(
+                "[Resource] 获取评分失败 | resource_id={}, user_id={}, error={}",
+                resource_id,
+                user.id,
+                e
+            );
             internal_error("获取失败")
         }
     }
@@ -593,7 +796,11 @@ pub async fn get_resource_ratings(
     match RatingService::get_resource_rating_info(&state.pool, resource_id, user_id).await {
         Ok(info) => HttpResponse::Ok().json(info),
         Err(e) => {
-            log::warn!("[Resource] 获取资源评分信息失败 | resource_id={}, error={}", resource_id, e);
+            log::warn!(
+                "[Resource] 获取资源评分信息失败 | resource_id={}, error={}",
+                resource_id,
+                e
+            );
             internal_error("获取评分信息失败")
         }
     }
@@ -611,7 +818,12 @@ pub async fn delete_rating(
     match RatingService::delete_rating(&state.pool, resource_id, user.id).await {
         Ok(_) => HttpResponse::NoContent().finish(),
         Err(e) => {
-            log::warn!("[Resource] 删除评分失败 | resource_id={}, user_id={}, error={}", resource_id, user.id, e);
+            log::warn!(
+                "[Resource] 删除评分失败 | resource_id={}, user_id={}, error={}",
+                resource_id,
+                user.id,
+                e
+            );
             internal_error("删除失败")
         }
     }
@@ -637,7 +849,12 @@ pub async fn toggle_like(
             HttpResponse::Ok().json(response_data)
         }
         Err(e) => {
-            log::warn!("[Resource] 点赞操作失败 | resource_id={}, user_id={}, error={}", resource_id, user.id, e);
+            log::warn!(
+                "[Resource] 点赞操作失败 | resource_id={}, user_id={}, error={}",
+                resource_id,
+                user.id,
+                e
+            );
             internal_error("操作失败")
         }
     }
@@ -657,7 +874,12 @@ pub async fn get_like_status(
         match LikeService::check_like_status(&state.pool, resource_id, user.id).await {
             Ok(status) => (status.is_liked, status.like_count),
             Err(e) => {
-                log::warn!("[Resource] 获取点赞状态失败 | resource_id={}, user_id={}, error={}", resource_id, user.id, e);
+                log::warn!(
+                    "[Resource] 获取点赞状态失败 | resource_id={}, user_id={}, error={}",
+                    resource_id,
+                    user.id,
+                    e
+                );
                 (false, 0)
             }
         }
@@ -666,7 +888,11 @@ pub async fn get_like_status(
         match LikeService::get_like_count(&state.pool, resource_id).await {
             Ok(count) => (false, count),
             Err(e) => {
-                log::warn!("[Resource] 获取点赞数失败 | resource_id={}, error={}", resource_id, e);
+                log::warn!(
+                    "[Resource] 获取点赞数失败 | resource_id={}, error={}",
+                    resource_id,
+                    e
+                );
                 (false, 0)
             }
         }
@@ -693,7 +919,11 @@ pub async fn get_comments(
     match CommentService::get_comments(&state.pool, resource_id, query.into_inner()).await {
         Ok(comments) => HttpResponse::Ok().json(comments),
         Err(e) => {
-            log::warn!("[Resource] 获取评论失败 | resource_id={}, error={}", resource_id, e);
+            log::warn!(
+                "[Resource] 获取评论失败 | resource_id={}, error={}",
+                resource_id,
+                e
+            );
             match e {
                 ResourceError::NotFound(msg) => not_found(&msg),
                 _ => internal_error("获取评论失败"),
@@ -712,10 +942,17 @@ pub async fn create_comment(
 ) -> impl Responder {
     let resource_id = path.into_inner();
 
-    match CommentService::create_comment(&state.pool, resource_id, user.id, request.into_inner()).await {
+    match CommentService::create_comment(&state.pool, resource_id, user.id, request.into_inner())
+        .await
+    {
         Ok(comment) => HttpResponse::Created().json(comment),
         Err(e) => {
-            log::warn!("[Resource] 发表评论失败 | resource_id={}, user_id={}, error={}", resource_id, user.id, e);
+            log::warn!(
+                "[Resource] 发表评论失败 | resource_id={}, user_id={}, error={}",
+                resource_id,
+                user.id,
+                e
+            );
             match e {
                 ResourceError::ValidationError(msg) => bad_request(&msg),
                 ResourceError::NotFound(msg) => not_found(&msg),

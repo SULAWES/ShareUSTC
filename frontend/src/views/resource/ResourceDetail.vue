@@ -189,6 +189,12 @@
                   <span class="info-value">{{ formatFileSize(resource.fileSize) }}</span>
                 </div>
                 <div class="info-item">
+                  <span class="info-label">存储位置</span>
+                  <el-tag :type="resource.storageType === 'oss' ? 'success' : 'info'" size="small">
+                    {{ StorageTypeLabels[resource.storageType] || '本地存储' }}
+                  </el-tag>
+                </div>
+                <div class="info-item">
                   <span class="info-label">上传时间</span>
                   <span class="info-value">{{ formatDate(resource.createdAt) }}</span>
                 </div>
@@ -247,6 +253,7 @@ import RatingWidget from '../../components/interaction/RatingWidget.vue';
 import {
   ResourceTypeLabels,
   ResourceCategoryLabels,
+  StorageTypeLabels,
   formatFileSize,
   type ResourceDetail,
   type ResourceCategoryType

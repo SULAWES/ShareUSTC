@@ -140,6 +140,11 @@
               <p class="image-meta">
                 {{ formatFileSize(image.fileSize) }} · {{ formatDate(image.createdAt) }}
               </p>
+              <p class="image-storage">
+                <el-tag :type="image.storageType === 'oss' ? 'success' : 'info'" size="small">
+                  {{ StorageTypeLabels[image.storageType] || '本地存储' }}
+                </el-tag>
+              </p>
             </div>
           </div>
         </div>
@@ -169,6 +174,11 @@
         <div class="detail-info">
           <p><strong>文件名：</strong>{{ selectedImage.originalName || '未命名' }}</p>
           <p><strong>大小：</strong>{{ formatFileSize(selectedImage.fileSize) }}</p>
+          <p><strong>存储位置：</strong>
+            <el-tag :type="selectedImage.storageType === 'oss' ? 'success' : 'info'" size="small">
+              {{ StorageTypeLabels[selectedImage.storageType] || '本地存储' }}
+            </el-tag>
+          </p>
           <p><strong>上传时间：</strong>{{ formatDateTime(selectedImage.createdAt) }}</p>
         </div>
         <div class="detail-links">
@@ -200,6 +210,7 @@ import {
   formatFileSize
 } from '../api/imageHost';
 import type { Image, ImageUploadResponse } from '../types/image';
+import { StorageTypeLabels } from '../types/resource';
 import {
   Picture,
   Upload,
@@ -587,6 +598,10 @@ onMounted(() => {
   margin: 0;
   font-size: 12px;
   color: #909399;
+}
+
+.image-storage {
+  margin: 4px 0 0;
 }
 
 .pagination-wrapper {

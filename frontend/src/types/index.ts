@@ -1,8 +1,8 @@
 // 全局类型定义
 
 export * from './auth';
-export * from './image';
 export * from './resource';
+export * from './image';
 export * from './preview';
 export * from './rating';
 export * from './like';

@@ -180,8 +180,8 @@ impl ResourceType {
     /// 获取支持的文件扩展名列表
     pub fn supported_extensions() -> Vec<&'static str> {
         vec![
-            "md", "markdown", "ppt", "pptx", "doc", "docx",
-            "pdf", "txt", "jpeg", "jpg", "png", "zip",
+            "md", "markdown", "ppt", "pptx", "doc", "docx", "pdf", "txt", "jpeg", "jpg", "png",
+            "zip",
         ]
     }
 
@@ -205,9 +205,13 @@ impl ResourceType {
         match self {
             ResourceType::WebMarkdown => "text/markdown",
             ResourceType::Ppt => "application/vnd.ms-powerpoint",
-            ResourceType::Pptx => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ResourceType::Pptx => {
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            }
             ResourceType::Doc => "application/msword",
-            ResourceType::Docx => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ResourceType::Docx => {
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
             ResourceType::Pdf => "application/pdf",
             ResourceType::Txt => "text/plain",
             ResourceType::Jpeg => "image/jpeg",
@@ -310,6 +314,7 @@ pub struct Resource {
     pub ai_reject_reason: Option<String>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    pub storage_type: Option<String>,
 }
 
 /// 资源统计信息（对应数据库 resource_stats 表）
@@ -495,6 +500,8 @@ pub struct ResourceDetailResponse {
     pub teachers: Vec<TeacherInfo>,
     /// 关联的课程列表
     pub courses: Vec<CourseInfo>,
+    /// 存储类型：local 或 oss
+    pub storage_type: String,
 }
 
 /// 资源统计响应 DTO
@@ -542,6 +549,8 @@ pub struct ResourceListItem {
     pub created_at: NaiveDateTime,
     pub stats: ResourceStatsResponse,
     pub uploader_name: Option<String>,
+    /// 存储类型：local 或 oss
+    pub storage_type: String,
 }
 
 /// 资源列表查询参数
