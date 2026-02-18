@@ -108,11 +108,6 @@ ShareUSTC/
 ├── scripts/           # 部署脚本
 │   └── database/      # 数据库初始化脚本
 ├── docs/              # 文档
-├── vibe/              # 开发文档与规划
-│   ├── PRD.md         # 产品需求文档
-│   ├── TechSpec_v2.md # 技术规格文档
-│   ├── phase1_dev/    # 阶段1开发文档
-│   └── phase2_dev/    # 阶段2开发文档
 └── README.md
 ```
 

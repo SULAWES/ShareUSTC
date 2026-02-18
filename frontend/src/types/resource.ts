@@ -144,6 +144,10 @@ export interface ResourceListQuery {
   category?: string;
   sortBy?: 'created_at' | 'downloads' | 'likes' | 'rating' | 'title';
   sortOrder?: 'asc' | 'desc';
+  /** 关联教师编号列表（筛选） */
+  teacherSns?: number[];
+  /** 关联课程编号列表（筛选） */
+  courseSns?: number[];
 }
 
 // 资源搜索查询参数
@@ -153,6 +157,10 @@ export interface ResourceSearchQuery {
   perPage?: number;
   resourceType?: string;
   category?: string;
+  /** 关联教师编号列表（筛选） */
+  teacherSns?: number[];
+  /** 关联课程编号列表（筛选） */
+  courseSns?: number[];
 }
 
 // 上传资源请求
