@@ -89,7 +89,7 @@ import { ref, watch, nextTick } from 'vue';
 import { ArrowLeft, ArrowRight, ZoomIn, ZoomOut, FullScreen } from '@element-plus/icons-vue';
 import * as pdfjsLib from 'pdfjs-dist';
 import PDFWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
-import { getResourceContent } from '../../api/resource';
+import { getResourcePreviewInfo, getResourcePreviewContent, type PreviewUrlResponse } from '../../api/resource';
 import logger from '../../utils/logger';
 
 // 设置 PDF.js worker - 使用 Vite 的 worker 导入
@@ -115,7 +115,13 @@ const loadPdf = async () => {
   error.value = false;
   try {
     logger.debug('[PdfViewer]', `开始加载PDF | resourceId=${props.resourceId}`);
-    const blob = await getResourceContent(props.resourceId);
+
+    // 获取预览信息（带缓存）
+    const previewInfo: PreviewUrlResponse = await getResourcePreviewInfo(props.resourceId);
+    logger.debug('[PdfViewer]', `获取到预览信息 | storageType=${previewInfo.storageType}, directAccess=${previewInfo.directAccess}`);
+
+    // 获取内容（会自动使用缓存）
+    const blob = await getResourcePreviewContent(props.resourceId, previewInfo);
     logger.debug('[PdfViewer]', `获取到blob | type=${blob.type}, size=${blob.size}`);
 
     // 确保blob类型正确
@@ -135,7 +141,6 @@ const loadPdf = async () => {
       cMapPacked: true,
       disableFontFace: false,  // 启用字体face以更好地支持嵌入式字体
       fontExtraProperties: true,  // 保留额外字体属性
-      // PDF.js 5.x 新增：尝试使用标准字体替代
       stopAtErrors: false,
       maxImageSize: 1024 * 1024,
     });

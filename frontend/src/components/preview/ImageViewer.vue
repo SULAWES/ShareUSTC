@@ -55,7 +55,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { ZoomIn, ZoomOut, FullScreen } from '@element-plus/icons-vue';
-import { getResourceContent } from '../../api/resource';
+import { getResourcePreviewInfo, getResourcePreviewContent, type PreviewUrlResponse } from '../../api/resource';
 import logger from '../../utils/logger';
 
 const props = defineProps<{
@@ -74,13 +74,18 @@ const loadImage = async () => {
   error.value = false;
   try {
     logger.debug('[ImageViewer]', `开始加载图片 | resourceId=${props.resourceId}`);
-    const blob = await getResourceContent(props.resourceId);
+
+    // 获取预览信息
+    const previewInfo: PreviewUrlResponse = await getResourcePreviewInfo(props.resourceId);
+    logger.debug('[ImageViewer]', `获取到预览信息 | storageType=${previewInfo.storageType}, directAccess=${previewInfo.directAccess}`);
+
+    // 获取内容（会自动使用缓存）
+    const blob = await getResourcePreviewContent(props.resourceId, previewInfo);
     logger.debug('[ImageViewer]', `获取到blob | type=${blob.type}, size=${blob.size}`);
 
     // 确保blob类型正确
     let imageBlob = blob;
     if (!blob.type || blob.type === 'application/octet-stream') {
-      // 尝试从文件扩展名推断类型
       const ext = props.altText?.split('.').pop()?.toLowerCase();
       if (ext === 'png') {
         imageBlob = new Blob([blob], { type: 'image/png' });
@@ -91,11 +96,11 @@ const loadImage = async () => {
     }
 
     const url = URL.createObjectURL(imageBlob);
-    logger.debug('[ImageViewer]', `创建的URL | url=${url}`);
+    logger.debug('[ImageViewer]', `创建的Blob URL | url=${url.substring(0, 60)}...`);
     imageUrl.value = url;
-    // 对于 blob URL，图片加载事件可能不可靠，这里直接设置 loading 为 false
-    // 实际图片加载状态由 img 的 @load 和 @error 处理
-    loading.value = false;
+
+    // 保持 loading 状态，等待 img 标签的 @load 或 @error 事件
+    loading.value = true;
   } catch (err: any) {
     logger.error('[ImageViewer]', '加载图片失败', err);
     error.value = true;

@@ -173,6 +173,13 @@
         <h2>更新日志</h2>
         <div class="changelog-list">
           <div class="changelog-item">
+            <div class="changelog-date">2026-02-20</div>
+            <div class="changelog-content">
+              <span class="changelog-tag tag-improve">功能优化</span>
+              <span class="changelog-text">将文件预览改为从 oss 读取；在浏览器侧缓存文件资源，降低服务器带宽消耗 </span>
+            </div>
+          </div>
+          <div class="changelog-item">
             <div class="changelog-date">2026-02-18</div>
             <div class="changelog-content">
               <span class="changelog-tag tag-feature">新增功能</span>

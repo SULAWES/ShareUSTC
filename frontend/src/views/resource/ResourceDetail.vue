@@ -367,7 +367,13 @@ const handleDownload = async () => {
 
   downloading.value = true;
   try {
-    await downloadResource(resourceId.value);
+    await downloadResource(resourceId.value, undefined, {
+      useCache: true,
+      resourceDetail: {
+        title: resource.value.title,
+        resourceType: resource.value.resourceType
+      }
+    });
     ElMessage.success('开始下载');
     // 更新下载次数
     resource.value.stats.downloads++;

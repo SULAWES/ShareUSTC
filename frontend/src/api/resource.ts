@@ -2,6 +2,7 @@ import request from './request';
 import logger from '../utils/logger';
 import { getOssStatus, getStsToken, resourceUploadCallback } from './oss';
 import { uploadToOssWithSts, uploadToSignedUrl } from '../utils/oss-upload';
+import { resourceCache } from '../utils/resourceCache';
 import type {
   ResourceListResponse,
   ResourceListQuery,
@@ -148,12 +149,54 @@ export const deleteResource = async (resourceId: string): Promise<void> => {
 };
 
 /**
- * 下载资源
- * @param resourceId 资源ID
+ * 从缓存触发下载
+ * @param cached 缓存的资源
  * @param fileName 文件名
  */
-export const downloadResource = async (resourceId: string, _fileName?: string): Promise<void> => {
+const downloadFromCache = (cached: { blob: Blob; fileName?: string; contentType: string }, fileName?: string): void => {
+  const url = URL.createObjectURL(cached.blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName || cached.fileName || 'download';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  // 延迟释放 URL
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+/**
+ * 下载资源
+ * 优先使用本地缓存，没有缓存则走正常下载流程
+ * @param resourceId 资源ID
+ * @param fileName 文件名
+ * @param options 可选参数
+ * @param options.useCache 是否使用缓存（默认true）
+ * @param options.resourceDetail 资源详情（用于获取文件名）
+ */
+export const downloadResource = async (
+  resourceId: string,
+  fileName?: string,
+  options: { useCache?: boolean; resourceDetail?: { title?: string; resourceType?: string } } = {}
+): Promise<void> => {
+  const { useCache = true, resourceDetail } = options;
+
   try {
+    // 1. 检查缓存
+    if (useCache) {
+      const cached = await resourceCache.get(resourceId);
+      if (cached) {
+        logger.info('[Resource]', `从缓存下载 | resourceId=${resourceId}, size=${cached.fileSize}`);
+        const downloadFileName = fileName || cached.fileName || resourceDetail?.title || 'download';
+        downloadFromCache(cached, downloadFileName);
+        return;
+      }
+    }
+
+    // 2. 走正常下载流程
+    logger.debug('[Resource]', `从服务器下载 | resourceId=${resourceId}`);
     const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
     const cleanBaseUrl = baseUrl.replace(/\/api$/, '');
     const downloadUrl = `${cleanBaseUrl}/api/resources/${resourceId}/download`;
@@ -173,7 +216,7 @@ export const downloadResource = async (resourceId: string, _fileName?: string): 
 };
 
 /**
- * 获取资源预览URL
+ * 获取资源预览URL（本地存储资源使用）
  * @param resourceId 资源ID
  * @returns 预览URL
  */
@@ -184,13 +227,137 @@ export const getResourcePreviewUrl = (resourceId: string): string => {
 };
 
 /**
- * 获取资源文件内容（用于预览）
+ * 获取资源预览信息（支持OSS直链）
  * @param resourceId 资源ID
+ * @param options 可选参数
+ * @param options.useCache 是否使用缓存（默认true）
+ * @returns 预览信息，包含 previewUrl 和 storageType
+ */
+export interface PreviewUrlResponse {
+  previewUrl: string;
+  storageType: 'oss' | 'local';
+  resourceType: string;
+  directAccess: boolean;
+  updatedAt: string; // 资源最后更新时间，用于缓存版本控制
+}
+
+export const getResourcePreviewInfo = async (
+  resourceId: string,
+  options: { useCache?: boolean } = {}
+): Promise<PreviewUrlResponse> => {
+  const { useCache = true } = options;
+
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+  const cleanBaseUrl = baseUrl.replace(/\/api$/, '');
+  const response = await fetch(
+    `${cleanBaseUrl}/api/resources/${resourceId}/preview-url`,
+    {
+      credentials: 'include',
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('获取预览链接失败');
+  }
+
+  const previewInfo: PreviewUrlResponse = await response.json();
+
+  // 如果是 OSS 直链，且需要缓存，尝试获取并缓存内容
+  if (useCache && previewInfo.directAccess && previewInfo.storageType === 'oss') {
+    const cached = await resourceCache.get(resourceId, previewInfo.updatedAt);
+    if (cached) {
+      logger.debug('[Resource]', `OSS直链使用缓存 | resourceId=${resourceId}`);
+      // 返回预览信息，但标记为使用缓存
+      return { ...previewInfo, previewUrl: 'cached' };
+    }
+  }
+
+  return previewInfo;
+};
+
+/**
+ * 获取资源预览内容（支持OSS直链缓存）
+ * 对于OSS直链，会先检查缓存，没有则获取并缓存
+ * @param resourceId 资源ID
+ * @param previewInfo 预览信息（从 getResourcePreviewInfo 获取）
+ * @param options 可选参数
  * @returns Blob 文件内容
  */
-export const getResourceContent = async (resourceId: string): Promise<Blob> => {
+export const getResourcePreviewContent = async (
+  resourceId: string,
+  previewInfo: PreviewUrlResponse,
+  options: { useCache?: boolean } = {}
+): Promise<Blob> => {
+  const { useCache = true } = options;
+
+  // 1. 检查缓存（使用 updatedAt 进行版本校验）
+  if (useCache) {
+    const cached = await resourceCache.get(resourceId, previewInfo.updatedAt);
+    if (cached) {
+      logger.debug('[Resource]', `预览使用缓存 | resourceId=${resourceId}`);
+      return cached.blob;
+    }
+  }
+
+  let blob: Blob;
+  let contentType = 'application/octet-stream';
+
+  if (previewInfo.directAccess && previewInfo.storageType === 'oss' && previewInfo.previewUrl !== 'cached') {
+    // OSS 直链：直接获取
+    logger.debug('[Resource]', `从OSS直链获取 | resourceId=${resourceId}`);
+    const response = await fetch(previewInfo.previewUrl, { method: 'GET' });
+    if (!response.ok) {
+      throw new Error(`获取资源失败: ${response.status}`);
+    }
+    contentType = response.headers.get('content-type') || contentType;
+    blob = await response.blob();
+  } else if (previewInfo.previewUrl === 'cached') {
+    // 标记为缓存的，重新获取缓存内容
+    const cached = await resourceCache.get(resourceId, previewInfo.updatedAt);
+    if (cached) {
+      return cached.blob;
+    }
+    // 缓存丢失，回退到 content 接口
+    return getResourceContent(resourceId, { useCache });
+  } else {
+    // 本地存储：通过 content 接口
+    return getResourceContent(resourceId, { useCache });
+  }
+
+  // 存入缓存（使用 updatedAt 作为版本标识）
+  if (useCache) {
+    await resourceCache.set(resourceId, blob, contentType, previewInfo.updatedAt);
+  }
+
+  return new Blob([blob], { type: contentType });
+};
+
+/**
+ * 获取资源文件内容（用于预览）
+ * 优先检查本地缓存，没有则从服务器获取并缓存
+ * @param resourceId 资源ID
+ * @param options 可选参数
+ * @param options.useCache 是否使用缓存（默认true）
+ * @param options.updatedAt 资源更新时间（用于缓存版本校验）
+ * @returns Blob 文件内容
+ */
+export const getResourceContent = async (
+  resourceId: string,
+  options: { useCache?: boolean; updatedAt?: string } = {}
+): Promise<Blob> => {
+  const { useCache = true, updatedAt } = options;
+
+  // 1. 先检查本地缓存（使用 updatedAt 进行版本校验）
+  if (useCache) {
+    const cached = await resourceCache.get(resourceId, updatedAt);
+    if (cached) {
+      logger.debug('[Resource]', `使用缓存内容 | resourceId=${resourceId}`);
+      return cached.blob;
+    }
+  }
+
+  // 2. 从服务器获取
   const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
-  // 确保 baseUrl 不以 /api 结尾，避免重复
   const cleanBaseUrl = baseUrl.replace(/\/api$/, '');
   const response = await fetch(
     `${cleanBaseUrl}/api/resources/${resourceId}/content`,
@@ -203,11 +370,18 @@ export const getResourceContent = async (resourceId: string): Promise<Blob> => {
     throw new Error('获取资源内容失败');
   }
 
-  // 获取响应的 Content-Type
+  // 获取响应的 Content-Type 和 X-Resource-Updated-At
   const contentType = response.headers.get('content-type') || 'application/octet-stream';
-  logger.debug('[Resource]', `获取资源内容 | contentType=${contentType}`);
+  const serverUpdatedAt = response.headers.get('X-Resource-Updated-At') || updatedAt || new Date().toISOString();
+  logger.debug('[Resource]', `获取资源内容 | contentType=${contentType}, updatedAt=${serverUpdatedAt}`);
 
   const blob = await response.blob();
+
+  // 3. 存入缓存（使用服务器返回的 updatedAt 作为版本标识）
+  if (useCache) {
+    await resourceCache.set(resourceId, blob, contentType, serverUpdatedAt);
+  }
+
   // 创建带有正确 MIME 类型的 Blob
   return new Blob([blob], { type: contentType });
 };

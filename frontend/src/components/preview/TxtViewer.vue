@@ -15,7 +15,8 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { getResourceContent } from '../../api/resource';
+import { getResourcePreviewInfo, getResourcePreviewContent, type PreviewUrlResponse } from '../../api/resource';
+import logger from '../../utils/logger';
 
 const props = defineProps<{
   resourceId: string;
@@ -29,8 +30,14 @@ const loadContent = async () => {
   loading.value = true;
   error.value = false;
   try {
-    const blob = await getResourceContent(props.resourceId);
+    // 获取预览信息
+    const previewInfo: PreviewUrlResponse = await getResourcePreviewInfo(props.resourceId);
+    logger.debug('[TxtViewer]', `获取到预览信息 | storageType=${previewInfo.storageType}, directAccess=${previewInfo.directAccess}`);
+
+    // 获取内容（会自动使用缓存）
+    const blob = await getResourcePreviewContent(props.resourceId, previewInfo);
     const text = await blob.text();
+
     // 限制显示长度（防止超大文本文件）
     const maxLength = 100000; // 10万字符
     if (text.length > maxLength) {
@@ -40,6 +47,7 @@ const loadContent = async () => {
     }
     loading.value = false;
   } catch (err) {
+    logger.error('[TxtViewer]', '加载文本失败', err);
     error.value = true;
     loading.value = false;
   }

@@ -516,8 +516,81 @@ fn build_content_disposition(filename: &str) -> String {
     }
 }
 
+/// 获取资源预览 URL
+/// 对于 OSS 存储的资源，返回带签名的直链 URL（避免服务器中转流量）
+/// 对于本地存储的资源，返回 /content 代理路径
+#[get("/resources/{resource_id}/preview-url")]
+pub async fn get_resource_preview_url(
+    state: web::Data<AppState>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let resource_id = path.into_inner();
+
+    // 获取资源文件路径和存储类型（预览不检查审核状态）
+    match ResourceService::get_resource_file_path_for_preview(&state.pool, resource_id).await {
+        Ok((file_path, resource_type, storage_type, updated_at)) => {
+            let is_oss = storage_type.as_deref() == Some("oss");
+
+            // 将 updated_at 格式化为 ISO 8601 字符串
+            let updated_at_str = updated_at.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+            if is_oss {
+                // OSS 存储：生成签名 URL，前端直接从 OSS 获取
+                let expires_secs = state.storage.default_signed_url_expiry();
+                match state.storage.get_file_url(&file_path, expires_secs).await {
+                    Ok(preview_url) => {
+                        log::debug!(
+                            "[Resource] 生成 OSS 预览 URL | resource_id={}, storage=oss",
+                            resource_id
+                        );
+                        HttpResponse::Ok().json(serde_json::json!({
+                            "previewUrl": preview_url,
+                            "storageType": "oss",
+                            "resourceType": resource_type,
+                            "directAccess": true,
+                            "updatedAt": updated_at_str
+                        }))
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[Resource] 生成 OSS 预览 URL 失败 | resource_id={}, error={}",
+                            resource_id,
+                            e
+                        );
+                        internal_error("生成预览链接失败")
+                    }
+                }
+            } else {
+                // 本地存储：返回相对路径，通过 /content 接口获取
+                log::debug!(
+                    "[Resource] 本地存储预览 | resource_id={}, storage=local",
+                    resource_id
+                );
+                HttpResponse::Ok().json(serde_json::json!({
+                    "previewUrl": format!("/api/resources/{}/content", resource_id),
+                    "storageType": "local",
+                    "resourceType": resource_type,
+                    "directAccess": false,
+                    "updatedAt": updated_at_str
+                }))
+            }
+        }
+        Err(e) => {
+            log::warn!(
+                "[Resource] 获取预览 URL 失败 | resource_id={}, error={}",
+                resource_id,
+                e
+            );
+            match e {
+                ResourceError::NotFound(msg) => not_found(&msg),
+                _ => internal_error("获取预览链接失败"),
+            }
+        }
+    }
+}
+
 /// 获取资源文件内容（用于预览）
-/// 使用后端代理模式读取文件，避免浏览器直接访问 OSS 产生 CORS 问题
+/// 使用后端代理模式读取文件，本地存储和OSS兜底场景使用
 #[get("/resources/{resource_id}/content")]
 pub async fn get_resource_content(
     state: web::Data<AppState>,
@@ -527,10 +600,13 @@ pub async fn get_resource_content(
 
     // 获取资源文件路径和存储类型（预览不检查审核状态）
     match ResourceService::get_resource_file_path_for_preview(&state.pool, resource_id).await {
-        Ok((file_path, resource_type, storage_type)) => {
+        Ok((file_path, resource_type, storage_type, updated_at)) => {
             // 根据资源实际的存储类型选择正确的存储后端读取文件
             // 使用后端代理模式，避免浏览器直接访问 OSS 产生 CORS 问题
             let is_oss = storage_type.as_deref() == Some("oss");
+
+            // 将 updated_at 格式化为 ISO 8601 字符串
+            let updated_at_str = updated_at.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
 
             let read_result = if is_oss {
                 // OSS 存储：使用主 storage（如果是 OSS 模式）或创建 OSS 存储实例
@@ -589,6 +665,7 @@ pub async fn get_resource_content(
                     HttpResponse::Ok()
                         .content_type(content_type)
                         .insert_header(("Cache-Control", "public, max-age=3600"))
+                        .insert_header(("X-Resource-Updated-At", updated_at_str.as_str()))
                         .body(file_content)
                 }
                 Err(StorageError::NotFound(_)) => {
@@ -724,6 +801,7 @@ pub fn config_public(cfg: &mut web::ServiceConfig) {
         .service(get_resource_detail) // /resources/{id} （后注册通配路径）
         .service(download_resource)
         .service(get_resource_content)
+        .service(get_resource_preview_url) // OSS 直链预览 URL
         .service(get_like_status) // 获取点赞状态（支持未登录用户）
         .service(get_comments) // 获取评论列表（公开）
         .service(get_resource_ratings); // 获取资源评分信息（支持未登录用户）

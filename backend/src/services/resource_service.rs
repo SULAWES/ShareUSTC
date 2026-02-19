@@ -1265,13 +1265,13 @@ impl ResourceService {
     }
 
     /// 获取资源文件路径（不检查审核状态，用于预览）
-    /// 返回：(file_path, resource_type, storage_type)
+    /// 返回：(file_path, resource_type, storage_type, updated_at)
     pub async fn get_resource_file_path_for_preview(
         pool: &PgPool,
         resource_id: Uuid,
-    ) -> Result<(String, String, Option<String>), ResourceError> {
-        let row: (String, String, Option<String>) =
-            sqlx::query_as("SELECT file_path, resource_type, storage_type FROM resources WHERE id = $1")
+    ) -> Result<(String, String, Option<String>, chrono::NaiveDateTime), ResourceError> {
+        let row: (String, String, Option<String>, chrono::NaiveDateTime) =
+            sqlx::query_as("SELECT file_path, resource_type, storage_type, updated_at FROM resources WHERE id = $1")
                 .bind(resource_id)
                 .fetch_optional(pool)
                 .await
