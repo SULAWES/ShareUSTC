@@ -260,6 +260,13 @@ const goToStep = (step: number) => {
   if (currentStep.value === 1 && step === 0 && uploadMode.value === 'markdown') {
     selectedFile.value = null;
   }
+
+  // 如果跳转到步骤2，且是markdown模式，自动将文件名填入资源标题（自动添加.md扩展名）
+  if (step === 1 && uploadMode.value === 'markdown' && markdownFileName.value.trim()) {
+    const fileName = markdownFileName.value.trim();
+    metadata.value.title = fileName.endsWith('.md') ? fileName : `${fileName}.md`;
+  }
+
   currentStep.value = step;
 };
 

@@ -227,6 +227,7 @@ impl OssStorage {
         key: &str,
         expires_secs: u64,
         response_content_disposition: Option<String>,
+        content_type: Option<&str>,
     ) -> Result<String, StorageError> {
         let scheme = self.endpoint_scheme();
         let host = self.object_host();
@@ -258,7 +259,25 @@ impl OssStorage {
         query_params.insert("x-oss-credential".to_string(), credential);
         query_params.insert("x-oss-date".to_string(), full_date.clone());
         query_params.insert("x-oss-expires".to_string(), expires.to_string());
-        query_params.insert("x-oss-additional-headers".to_string(), "host".to_string());
+
+        // 构建 canonical headers 和 additional headers
+        // 注意：additional headers 必须按字母顺序排列
+        let mut canonical_headers = String::new();
+        let mut additional_headers = Vec::new();
+
+        // content-type 按字母顺序在 host 之前
+        if let Some(ct) = content_type {
+            canonical_headers.push_str(&format!("content-type:{}\n", ct));
+            additional_headers.push("content-type");
+        }
+
+        canonical_headers.push_str(&format!("host:{}\n", host));
+        additional_headers.push("host");
+
+        query_params.insert(
+            "x-oss-additional-headers".to_string(),
+            additional_headers.join(";"),
+        );
 
         if let Some(content_disposition) = response_content_disposition {
             query_params.insert(
@@ -268,10 +287,13 @@ impl OssStorage {
         }
 
         let canonical_query = canonical_query_string(&query_params);
-        let canonical_headers = format!("host:{}\n", host);
         let canonical_request = format!(
-            "{}\n{}\n{}\n{}\nhost\nUNSIGNED-PAYLOAD",
-            method, canonical_uri, canonical_query, canonical_headers
+            "{}\n{}\n{}\n{}\n{}\nUNSIGNED-PAYLOAD",
+            method,
+            canonical_uri,
+            canonical_query,
+            canonical_headers,
+            additional_headers.join(";")
         );
 
         let hashed_request = hex_lower(&Sha256::digest(canonical_request.as_bytes()));
@@ -314,6 +336,7 @@ impl OssStorage {
             &normalized_key,
             self.config.signed_url_expiry,
             None,
+            content_type,
         )?;
 
         let mut request = self
@@ -348,6 +371,7 @@ impl OssStorage {
             "DELETE",
             &normalized_key,
             self.config.signed_url_expiry,
+            None,
             None,
         )?;
         let response = self
@@ -388,7 +412,7 @@ impl StorageBackend for OssStorage {
     fn read_file<'a>(&'a self, key: &'a str) -> StorageFuture<'a, Vec<u8>> {
         Box::pin(async move {
             let signed_url =
-                self.build_presigned_url("GET", key, self.config.signed_url_expiry, None)?;
+                self.build_presigned_url("GET", key, self.config.signed_url_expiry, None, None)?;
 
             let response = self
                 .client
@@ -433,7 +457,7 @@ impl StorageBackend for OssStorage {
     }
 
     fn get_file_url<'a>(&'a self, key: &'a str, expires_secs: u64) -> StorageFuture<'a, String> {
-        Box::pin(async move { self.build_presigned_url("GET", key, expires_secs, None) })
+        Box::pin(async move { self.build_presigned_url("GET", key, expires_secs, None, None) })
     }
 
     fn get_download_url<'a>(
@@ -444,7 +468,7 @@ impl StorageBackend for OssStorage {
     ) -> StorageFuture<'a, String> {
         let content_disposition = build_content_disposition(filename);
         Box::pin(async move {
-            self.build_presigned_url("GET", key, expires_secs, Some(content_disposition))
+            self.build_presigned_url("GET", key, expires_secs, Some(content_disposition), None)
         })
     }
 
@@ -454,13 +478,13 @@ impl StorageBackend for OssStorage {
         expires_secs: u64,
         _content_type: Option<&'a str>,
     ) -> StorageFuture<'a, String> {
-        Box::pin(async move { self.build_presigned_url("PUT", key, expires_secs, None) })
+        Box::pin(async move { self.build_presigned_url("PUT", key, expires_secs, None, None) })
     }
 
     fn head_file<'a>(&'a self, key: &'a str) -> StorageFuture<'a, StorageFileMetadata> {
         Box::pin(async move {
             let normalized_key = self.normalize_key(key)?;
-            let presigned_url = self.build_presigned_url("HEAD", &normalized_key, 60, None)?;
+            let presigned_url = self.build_presigned_url("HEAD", &normalized_key, 60, None, None)?;
 
             let head_response = self
                 .client
@@ -476,7 +500,7 @@ impl StorageBackend for OssStorage {
                 }
                 StatusCode::FORBIDDEN | StatusCode::METHOD_NOT_ALLOWED => {
                     // 某些策略下可能未授予 HeadObject；回退到 GET Range 获取元信息。
-                    let get_url = self.build_presigned_url("GET", &normalized_key, 60, None)?;
+                    let get_url = self.build_presigned_url("GET", &normalized_key, 60, None, None)?;
                     let get_response = self
                         .client
                         .get(&get_url)
@@ -524,7 +548,7 @@ impl StorageBackend for OssStorage {
 
     fn file_exists<'a>(&'a self, key: &'a str) -> StorageFuture<'a, bool> {
         Box::pin(async move {
-            let signed_url = self.build_presigned_url("GET", key, 60, None)?;
+            let signed_url = self.build_presigned_url("GET", key, 60, None, None)?;
 
             let response = self
                 .client

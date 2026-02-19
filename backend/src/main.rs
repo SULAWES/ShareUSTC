@@ -293,9 +293,9 @@ async fn main() -> std::io::Result<()> {
         let public_rules = vec![
             // /api/auth 全部公开
             PublicPathRule::all_methods("/api/auth"),
-            // /api/resources GET 方法公开（列表、搜索、详情、下载），但排除 /api/resources/my
+            // /api/resources GET 方法公开（列表、搜索、详情、下载），但排除需要登录的接口
             PublicPathRule::with_methods("/api/resources", vec![Method::GET])
-                .exclude(vec!["/api/resources/my"]),
+                .exclude(vec!["/api/resources/my", "/api/resources/{id}/rate"]),
             // /api/users/{user_id} 和 /api/users/{user_id}/homepage GET 方法公开
             // 排除 /api/users/me 和 /api/users/verify
             PublicPathRule::with_methods("/api/users", vec![Method::GET])

@@ -191,7 +191,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { Search, Upload, Reading, View, Download, Star, Loading } from '@element-plus/icons-vue';
 import { getResourceList, searchResources } from '../../api/resource';
@@ -208,6 +208,7 @@ import type { Teacher } from '../../types/teacher';
 import type { Course } from '../../types/course';
 
 const router = useRouter();
+const route = useRoute();
 
 // 状态
 const loading = ref(false);
@@ -391,6 +392,11 @@ watch([filterType, filterCategory, sortBy, filterTeacherSns, filterCourseSns], (
 
 // 页面加载时获取资源列表
 onMounted(() => {
+  // 从URL query参数中读取搜索关键词
+  const queryKeyword = route.query.q as string;
+  if (queryKeyword) {
+    searchQuery.value = queryKeyword;
+  }
   loadResources();
   loadTeachers();
   loadCourses();

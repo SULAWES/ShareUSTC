@@ -1350,14 +1350,61 @@ impl ResourceService {
                 .await
                 .map_err(|e| ResourceError::AiError(e.to_string()))?;
 
-        // 更新文件内容
-        storage
-            .write_file(
-                &resource.file_path,
-                content.as_bytes().to_vec(),
-                Some("text/markdown"),
-            )
-            .await?;
+        // 根据资源实际的存储类型选择正确的存储后端写入文件
+        let is_oss = resource.storage_type.as_deref() == Some("oss");
+        if is_oss {
+            // OSS 存储
+            if storage.backend_type() == super::StorageBackendType::Oss {
+                storage
+                    .write_file(
+                        &resource.file_path,
+                        content.as_bytes().to_vec(),
+                        Some("text/markdown"),
+                    )
+                    .await?;
+            } else {
+                // 当前是 local 模式，但需要写入 OSS 文件
+                let config = crate::config::Config::from_env();
+                match super::create_storage_backend(&config) {
+                    Ok(oss_storage) if oss_storage.backend_type() == super::StorageBackendType::Oss => {
+                        oss_storage
+                            .write_file(
+                                &resource.file_path,
+                                content.as_bytes().to_vec(),
+                                Some("text/markdown"),
+                            )
+                            .await?;
+                    }
+                    _ => return Err(ResourceError::FileError("无法写入 OSS 资源".to_string())),
+                }
+            }
+        } else {
+            // 本地存储
+            if storage.backend_type() == super::StorageBackendType::Local {
+                storage
+                    .write_file(
+                        &resource.file_path,
+                        content.as_bytes().to_vec(),
+                        Some("text/markdown"),
+                    )
+                    .await?;
+            } else {
+                // 当前是 OSS 模式，但需要写入本地文件
+                let config = crate::config::Config::from_env();
+                match super::create_local_storage(&config) {
+                    Ok(local_storage) => {
+                        local_storage
+                            .write_file(
+                                &resource.file_path,
+                                content.as_bytes().to_vec(),
+                                Some("text/markdown"),
+                            )
+                            .await?;
+                    }
+                    Err(e) => return Err(ResourceError::FileError(format!("无法访问本地存储: {}", e))),
+                }
+            }
+        }
 
         // 计算新的文件哈希和大小（使用字节长度而非字符长度）
         let file_hash = crate::services::FileService::calculate_hash(content.as_bytes());
@@ -1428,8 +1475,36 @@ impl ResourceService {
             ));
         }
 
-        // 读取文件内容（统一走存储抽象，兼容 local/oss）
-        let content_bytes = storage.read_file(&resource.file_path).await?;
+        // 根据资源实际的存储类型选择正确的存储后端读取文件
+        let is_oss = resource.storage_type.as_deref() == Some("oss");
+        let content_bytes = if is_oss {
+            // OSS 存储
+            if storage.backend_type() == super::StorageBackendType::Oss {
+                storage.read_file(&resource.file_path).await?
+            } else {
+                // 当前是 local 模式，但需要读取 OSS 文件
+                let config = crate::config::Config::from_env();
+                match super::create_storage_backend(&config) {
+                    Ok(oss_storage) if oss_storage.backend_type() == super::StorageBackendType::Oss => {
+                        oss_storage.read_file(&resource.file_path).await?
+                    }
+                    _ => return Err(ResourceError::FileError("无法读取 OSS 资源".to_string())),
+                }
+            }
+        } else {
+            // 本地存储
+            if storage.backend_type() == super::StorageBackendType::Local {
+                storage.read_file(&resource.file_path).await?
+            } else {
+                // 当前是 OSS 模式，但需要读取本地文件
+                let config = crate::config::Config::from_env();
+                match super::create_local_storage(&config) {
+                    Ok(local_storage) => local_storage.read_file(&resource.file_path).await?,
+                    Err(e) => return Err(ResourceError::FileError(format!("无法访问本地存储: {}", e))),
+                }
+            }
+        };
+
         let content = String::from_utf8(content_bytes)
             .map_err(|e| ResourceError::FileError(format!("文件内容不是有效 UTF-8: {}", e)))?;
 

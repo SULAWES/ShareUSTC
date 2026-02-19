@@ -101,6 +101,18 @@ request.interceptors.response.use(
             return Promise.reject(error);
           }
 
+          // 防止递归刷新：如果当前请求本身就是刷新token请求，直接跳转登录
+          const isRefreshRequest = config?.url?.includes('/auth/refresh');
+          if (isRefreshRequest) {
+            const authStore = useAuthStore();
+            authStore.clearAuth();
+            ElMessage.error('登录已失效，请重新登录');
+            if (router.currentRoute.value.path !== '/login') {
+              window.location.href = '/login';
+            }
+            return Promise.reject(error);
+          }
+
           // Token 过期，尝试刷新
           const authStore = useAuthStore();
           const refreshed = await authStore.refreshAccessToken();

@@ -33,7 +33,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       // 使用独立的 axios 实例进行验证，跳过主请求拦截器的错误处理
       // 这样 401 不会触发弹窗和跳转
-      const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081/api';
+      const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
       const response = await axios.get(`${baseURL}/users/me`, {
         withCredentials: true,
         timeout: 5000,
@@ -53,7 +53,7 @@ export const useAuthStore = defineStore('auth', () => {
         // Token 过期，尝试刷新（刷新请求也跳过错误处理）
         logger.warn('[Auth]', 'Access Token 已过期，尝试刷新...');
         try {
-          const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081/api';
+          const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
           await axios.post(`${baseURL}/auth/refresh`, {}, {
             withCredentials: true,
             timeout: 5000,

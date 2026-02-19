@@ -176,6 +176,13 @@
             <div class="changelog-date">2026-02-18</div>
             <div class="changelog-content">
               <span class="changelog-tag tag-feature">新增功能</span>
+              <span class="changelog-text">新增 oss 图片/资源存储，大幅加快资源的访问速度</span>
+            </div>
+          </div>
+          <div class="changelog-item">
+            <div class="changelog-date">2026-02-18</div>
+            <div class="changelog-content">
+              <span class="changelog-tag tag-feature">新增功能</span>
               <span class="changelog-text">增加通过课程和教师搜索资料的功能</span>
             </div>
           </div>
@@ -259,6 +266,49 @@ const contributorsLoading = ref(true);
 const contributorsError = ref(false);
 const contributorsComputing = ref(false);
 
+// GitHub API 缓存配置
+const CACHE_KEY = 'github_contributors_cache';
+const CACHE_DURATION = 30 * 60 * 1000; // 30 分钟缓存
+
+interface CacheData {
+  timestamp: number;
+  data: Contributor[];
+}
+
+// 从 sessionStorage 读取缓存
+const getCachedContributors = (): Contributor[] | null => {
+  try {
+    const cached = sessionStorage.getItem(CACHE_KEY);
+    if (!cached) return null;
+
+    const parsed: CacheData = JSON.parse(cached);
+    const now = Date.now();
+
+    // 检查缓存是否过期
+    if (now - parsed.timestamp > CACHE_DURATION) {
+      sessionStorage.removeItem(CACHE_KEY);
+      return null;
+    }
+
+    return parsed.data;
+  } catch {
+    return null;
+  }
+};
+
+// 保存到 sessionStorage 缓存
+const setCachedContributors = (data: Contributor[]) => {
+  try {
+    const cacheData: CacheData = {
+      timestamp: Date.now(),
+      data,
+    };
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+  } catch {
+    // 忽略缓存错误
+  }
+};
+
 const frontendTech = ['Vue 3', 'TypeScript', 'Vite', 'Pinia', 'Element Plus', 'Vue Router', 'Axios'];
 const backendTech = ['Rust', 'Actix-web', 'Tokio', 'SQLx'];
 const dbTech = ['PostgreSQL'];
@@ -282,6 +332,15 @@ const fetchRepoStats = async () => {
   }
 };
 
+// 计算指数退避延迟（单位：毫秒）
+// 基础延迟 3 秒，每次重试增加 50%，最大 10 秒
+const getRetryDelay = (retryCount: number): number => {
+  const baseDelay = 3000; // 3 秒
+  const maxDelay = 10000; // 10 秒
+  const delay = baseDelay * Math.pow(1.5, retryCount);
+  return Math.min(delay, maxDelay);
+};
+
 // 获取 GitHub 贡献者列表（包含代码行数统计）
 // 该端点可能返回 202 表示正在计算，需要重试
 const fetchContributors = async (retryCount = 0): Promise<void> => {
@@ -290,6 +349,14 @@ const fetchContributors = async (retryCount = 0): Promise<void> => {
     contributorsLoading.value = true;
     contributorsError.value = false;
     contributorsComputing.value = false;
+
+    // 先检查缓存
+    const cached = getCachedContributors();
+    if (cached) {
+      contributors.value = cached;
+      contributorsLoading.value = false;
+      return;
+    }
   }
   try {
     // 使用 stats/contributors 端点获取详细的代码统计
@@ -302,11 +369,20 @@ const fetchContributors = async (retryCount = 0): Promise<void> => {
     });
     clearTimeout(timeoutId);
 
+    // 处理 403 速率限制错误
+    if (response.status === 403) {
+      console.warn('GitHub API 速率限制，请稍后重试');
+      contributorsError.value = true;
+      contributorsLoading.value = false;
+      return;
+    }
+
     if (response.status === 202) {
       // 数据正在计算中，等待后重试
-      // 每次等待 1 秒，最多重试 60 次（总计最多 60 秒等待）
-      if (retryCount < 60) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      // 使用指数退避策略，最多重试 10 次
+      if (retryCount < 10) {
+        const delay = getRetryDelay(retryCount);
+        await new Promise(resolve => setTimeout(resolve, delay));
         return fetchContributors(retryCount + 1);
       }
       contributorsError.value = true;
@@ -362,8 +438,13 @@ const fetchContributors = async (retryCount = 0): Promise<void> => {
       });
 
       // 转换为数组并按commits排序
-      contributors.value = Array.from(contributorMap.values())
+      const sortedContributors = Array.from(contributorMap.values())
         .sort((a, b) => b.commits - a.commits);
+
+      contributors.value = sortedContributors;
+
+      // 保存到缓存
+      setCachedContributors(sortedContributors);
 
       contributorsComputing.value = false;
     } else {
