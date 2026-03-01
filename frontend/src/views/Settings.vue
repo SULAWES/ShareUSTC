@@ -4,6 +4,31 @@
       <h1 class="page-title">设置</h1>
 
       <div class="settings-sections">
+        <!-- 界面设置 -->
+        <section class="settings-section">
+          <h2 class="section-title">
+            <el-icon><Setting /></el-icon>
+            界面设置
+          </h2>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">用户指南弹窗</div>
+              <div class="setting-desc">
+                进入首页时显示用户指南
+              </div>
+            </div>
+            <div class="setting-control">
+              <el-switch
+                v-model="showUserGuide"
+                active-text="显示"
+                inactive-text="隐藏"
+                @change="handleUserGuideChange"
+              />
+            </div>
+          </div>
+        </section>
+
         <!-- 缓存管理 -->
         <section class="settings-section">
           <h2 class="section-title">
@@ -81,9 +106,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
-import { Collection, Timer, Delete, Refresh } from '@element-plus/icons-vue';
+import { Collection, Timer, Delete, Refresh, Setting } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { resourceCache, type CacheStats } from '../utils/resourceCache';
+
+// 用户指南弹窗 LocalStorage 键名
+const GUIDE_MODAL_KEY = 'userGuideModalClosed';
 
 // 缓存状态
 const loading = ref(false);
@@ -176,7 +204,50 @@ const handleClearAll = async () => {
 
 onMounted(() => {
   refreshStats();
+  loadUserGuideSetting();
 });
+
+// 用户指南设置
+const showUserGuide = ref(true);
+
+// 加载用户指南设置
+const loadUserGuideSetting = () => {
+  try {
+    const stored = localStorage.getItem(GUIDE_MODAL_KEY);
+    if (stored) {
+      const data = JSON.parse(stored);
+      // 如果设置了永久关闭，则开关为 false（不显示）
+      showUserGuide.value = !data.permanent;
+    } else {
+      // 没有设置时默认显示
+      showUserGuide.value = true;
+    }
+  } catch (e) {
+    console.warn('Failed to parse user guide modal setting:', e);
+    showUserGuide.value = true;
+  }
+};
+
+// 处理用户指南设置变化
+const handleUserGuideChange = (value: boolean) => {
+  try {
+    if (value) {
+      // 开启显示：清除永久关闭设置
+      localStorage.removeItem(GUIDE_MODAL_KEY);
+      ElMessage.success('已开启用户指南弹窗');
+    } else {
+      // 关闭显示：设置永久关闭
+      localStorage.setItem(GUIDE_MODAL_KEY, JSON.stringify({
+        permanent: true,
+        timestamp: Date.now()
+      }));
+      ElMessage.success('已永久关闭用户指南弹窗');
+    }
+  } catch (e) {
+    console.error('Failed to save user guide modal setting:', e);
+    ElMessage.error('设置保存失败');
+  }
+};
 </script>
 
 <style scoped>
@@ -229,6 +300,41 @@ onMounted(() => {
 .section-title .el-tag {
   margin-left: auto;
   font-weight: normal;
+}
+
+/* 设置项样式 */
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.setting-item:last-child {
+  border-bottom: none;
+}
+
+.setting-info {
+  flex: 1;
+  padding-right: 24px;
+}
+
+.setting-label {
+  font-size: 15px;
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 6px;
+}
+
+.setting-desc {
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.5;
+}
+
+.setting-control {
+  flex-shrink: 0;
 }
 
 /* 缓存内容区域 - 无内边框设计 */
@@ -317,6 +423,24 @@ onMounted(() => {
   }
 
   .cache-actions .el-button {
+    width: 100%;
+  }
+
+  .setting-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .setting-info {
+    padding-right: 0;
+  }
+
+  .setting-control {
+    width: 100%;
+  }
+
+  .setting-control :deep(.el-switch) {
     width: 100%;
   }
 }

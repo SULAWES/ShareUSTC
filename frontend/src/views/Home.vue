@@ -1,5 +1,8 @@
 <template>
   <div class="home">
+    <!-- 用户指南弹窗 -->
+    <UserGuideModal ref="userGuideModalRef" />
+
     <div class="page-container">
       <!-- 左侧主内容区 -->
       <main class="main-content">
@@ -211,6 +214,7 @@ import { useAuthStore } from '../stores/auth';
 import { getHotResources, getResourceCount } from '../api/resource';
 import type { HotResourceItem } from '../types/resource';
 import { ResourceTypeLabels } from '../types/resource';
+import UserGuideModal from '../components/common/UserGuideModal.vue';
 import {
   Search,
   Trophy,
