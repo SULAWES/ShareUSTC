@@ -150,7 +150,9 @@ pub async fn login(
         Err(e) => {
             log::warn!("[Auth] 用户登录失败 | username={}, error={}", username, e);
             match e {
-                AuthError::InvalidCredentials(msg) => unauthorized(&msg),
+                // 使用 400 而不是 401，因为 401 会触发前端刷新 token 逻辑
+                // 密码错误是业务错误，不是认证状态问题
+                AuthError::InvalidCredentials(msg) => bad_request(&msg),
                 AuthError::ValidationError(msg) => bad_request(&msg),
                 _ => internal_error("登录失败"),
             }

@@ -315,6 +315,7 @@ pub struct Resource {
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
     pub storage_type: Option<String>,
+    pub description: Option<String>,
 }
 
 /// 资源统计信息（对应数据库 resource_stats 表）
@@ -648,6 +649,26 @@ pub struct UpdateResourceRelationsRequest {
     pub course_sns: Vec<i64>,
     /// 关联资源ID列表
     pub related_resource_ids: Vec<Uuid>,
+}
+
+/// 更新资源描述请求 DTO
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateResourceDescriptionRequest {
+    pub description: Option<String>,
+}
+
+impl UpdateResourceDescriptionRequest {
+    /// 验证请求
+    pub fn validate(&self) -> Result<(), String> {
+        // 描述长度限制（10KB）
+        if let Some(desc) = &self.description {
+            if desc.len() > 10 * 1024 {
+                return Err("资源描述不能超过10KB".to_string());
+            }
+        }
+        Ok(())
+    }
 }
 
 impl UpdateResourceContentRequest {

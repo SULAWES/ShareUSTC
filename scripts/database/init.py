@@ -221,6 +221,11 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resources' AND column_name = 'source_file_url') THEN
         ALTER TABLE resources ADD COLUMN source_file_url VARCHAR(1000);
     END IF;
+
+  -- 资源描述（纯文本，可选）
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'resources' AND column_name = 'description') THEN
+        ALTER TABLE resources ADD COLUMN description TEXT;
+    END IF;
 END $$;
 
 -- ============================================

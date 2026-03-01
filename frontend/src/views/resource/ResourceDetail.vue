@@ -115,8 +115,22 @@
       <!-- 主体内容 -->
       <div class="resource-content">
         <el-row :gutter="24">
-          <!-- 左侧：预览和描述 -->
+          <!-- 左侧：描述、预览和评论 -->
           <el-col :xs="24" :lg="16">
+            <!-- 资源描述 -->
+            <el-card v-if="resource.description || canEditDescription" class="description-card" shadow="never">
+              <template #header>
+                <div class="description-header">
+                  <span>资源描述</span>
+                  <el-button v-if="canEditDescription" type="primary" link @click="showEditDescription = true">
+                    <el-icon><Edit /></el-icon>
+                    {{ resource.description ? '编辑' : '添加描述' }}
+                  </el-button>
+                </div>
+              </template>
+              <div v-if="resource.description" class="description-content">{{ resource.description }}</div>
+            </el-card>
+
             <el-card class="preview-card" shadow="never">
               <template #header>
                 <span>资源预览</span>
@@ -130,14 +144,6 @@
                   :resource-title="resource.title"
                 />
               </div>
-            </el-card>
-
-            <!-- 资源描述 -->
-            <el-card v-if="resource.description" class="description-card" shadow="never">
-              <template #header>
-                <span>资源描述</span>
-              </template>
-              <div class="description-content">{{ resource.description }}</div>
             </el-card>
 
             <!-- 评论区域 -->
@@ -299,12 +305,37 @@
         :initial-related-resources="resource.relatedResources?.map(r => r.id) || []"
         @success="handleRelationsUpdated"
       />
+
+      <!-- 编辑资源描述弹窗 -->
+      <el-dialog
+        v-model="showEditDescription"
+        title="编辑资源描述"
+        width="600px"
+        :close-on-click-modal="false"
+      >
+        <el-input
+          v-model="editingDescription"
+          type="textarea"
+          :rows="8"
+          placeholder="请输入资源描述，描述资源的内容、用途等信息（纯文本，不支持 Markdown）"
+          maxlength="10000"
+          show-word-limit
+        />
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="showEditDescription = false">取消</el-button>
+            <el-button type="primary" :loading="savingDescription" @click="saveDescription">
+              保存
+            </el-button>
+          </span>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
@@ -324,7 +355,7 @@ import {
   ArrowRight,
   Link
 } from '@element-plus/icons-vue';
-import { getResourceDetail, downloadResource, deleteResource } from '../../api/resource';
+import { getResourceDetail, downloadResource, deleteResource, updateResourceDescription } from '../../api/resource';
 import { checkResourceInFavorite } from '../../api/favorite';
 import { useAuthStore } from '../../stores/auth';
 import { useFavoriteStore } from '../../stores/favorite';
@@ -361,6 +392,9 @@ const showEditRelations = ref(false);
 const addingToDefault = ref(false);
 const isInDefaultFavorite = ref(false); // 资源是否已在默认收藏夹中
 const checkingDefaultStatus = ref(false); // 正在检查默认收藏夹状态
+const showEditDescription = ref(false);
+const editingDescription = ref('');
+const savingDescription = ref(false);
 
 // 计算属性
 const resourceId = computed(() => route.params.id as string);
@@ -400,6 +434,12 @@ const canEditRelations = computed(() => {
 const canEdit = computed(() => {
   if (!resource.value || !authStore.user) return false;
   if (resource.value.resourceType !== 'web_markdown') return false;
+  return resource.value.uploaderId === authStore.user.id || authStore.user.role === 'admin';
+});
+
+// 是否可以编辑资源描述（上传者或管理员）
+const canEditDescription = computed(() => {
+  if (!resource.value || !authStore.user) return false;
   return resource.value.uploaderId === authStore.user.id || authStore.user.role === 'admin';
 });
 
@@ -637,6 +677,32 @@ const addToDefaultFavorite = async () => {
     ElMessage.error(errorMessage);
   } finally {
     addingToDefault.value = false;
+  }
+};
+
+// 监听编辑描述对话框的显示，打开时初始化编辑内容
+watch(showEditDescription, (newValue) => {
+  if (newValue && resource.value) {
+    editingDescription.value = resource.value.description || '';
+  }
+});
+
+// 保存资源描述
+const saveDescription = async () => {
+  if (!resource.value) return;
+
+  savingDescription.value = true;
+  try {
+    const description = editingDescription.value.trim() || null;
+    await updateResourceDescription(resourceId.value, description);
+    ElMessage.success('资源描述更新成功');
+    resource.value.description = description ?? undefined;
+    showEditDescription.value = false;
+  } catch (error: any) {
+    const errorMessage = error.response?.data?.message || error.message || '更新失败';
+    ElMessage.error(errorMessage);
+  } finally {
+    savingDescription.value = false;
   }
 };
 
@@ -948,6 +1014,18 @@ onMounted(() => {
   line-height: 1.8;
   color: var(--el-text-color-regular);
   white-space: pre-wrap;
+}
+
+.description-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.description-empty {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--el-text-color-secondary);
 }
 
 .tags-list {

@@ -496,3 +496,20 @@ export const updateResourceRelations = async (
     data
   }) as Promise<{ message: string }>;
 };
+
+/**
+ * 更新资源描述
+ * @param resourceId 资源ID
+ * @param description 资源描述（null 表示清空）
+ * @returns 更新结果
+ */
+export const updateResourceDescription = async (
+  resourceId: string,
+  description: string | null
+): Promise<{ message: string }> => {
+  return request({
+    url: `/resources/${resourceId}/description`,
+    method: 'put',
+    data: { description }
+  }) as Promise<{ message: string }>;
+};

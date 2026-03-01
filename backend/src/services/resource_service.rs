@@ -164,9 +164,9 @@ impl ResourceService {
             INSERT INTO resources (
                 id, title, author_id, uploader_id, course_name,
                 resource_type, category, tags, file_path, source_file_path,
-                file_hash, file_size, content_accuracy, audit_status, ai_reject_reason, storage_type
+                file_hash, file_size, content_accuracy, audit_status, ai_reject_reason, storage_type, description
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             RETURNING *
             "#,
         )
@@ -190,6 +190,7 @@ impl ResourceService {
             ai_result.reason.as_deref()
         })
         .bind(&storage_type)
+        .bind(request.description.as_ref())
         .fetch_one(&mut *tx)
         .await
         {
@@ -398,9 +399,9 @@ impl ResourceService {
             INSERT INTO resources (
                 id, title, author_id, uploader_id, course_name,
                 resource_type, category, tags, file_path, source_file_path,
-                file_hash, file_size, content_accuracy, audit_status, ai_reject_reason, storage_type
+                file_hash, file_size, content_accuracy, audit_status, ai_reject_reason, storage_type, description
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             RETURNING *
             "#,
         )
@@ -424,6 +425,7 @@ impl ResourceService {
             ai_result.reason.as_deref()
         })
         .bind(&storage_type)
+        .bind(request.description.as_ref())
         .fetch_one(&mut *tx)
         .await
         {
@@ -682,7 +684,7 @@ impl ResourceService {
             resource_type: resource.resource_type,
             category: resource.category,
             tags,
-            description: None, // 暂不支持描述字段
+            description: resource.description,
             file_size: resource.file_size,
             audit_status: resource.audit_status,
             created_at: resource.created_at,
@@ -1891,5 +1893,57 @@ impl ResourceService {
         })?;
 
         Ok(resources)
+    }
+
+    /// 更新资源描述
+    /// 用户只能更新自己上传的资源，管理员可以更新所有资源
+    pub async fn update_resource_description(
+        pool: &PgPool,
+        user: &CurrentUser,
+        resource_id: Uuid,
+        description: Option<String>,
+    ) -> Result<(), ResourceError> {
+        // 验证描述长度
+        if let Some(ref desc) = description {
+            if desc.len() > 10 * 1024 {
+                return Err(ResourceError::ValidationError(
+                    "资源描述不能超过10KB".to_string(),
+                ));
+            }
+        }
+
+        // 获取资源信息
+        let resource: crate::models::Resource =
+            sqlx::query_as::<_, crate::models::Resource>("SELECT * FROM resources WHERE id = $1")
+                .bind(resource_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| ResourceError::DatabaseError(e.to_string()))?
+                .ok_or_else(|| ResourceError::NotFound(format!("资源 {} 不存在", resource_id)))?;
+
+        // 检查权限（上传者或管理员）
+        if resource.uploader_id != user.id && user.role != crate::models::UserRole::Admin {
+            return Err(ResourceError::Unauthorized(
+                "没有权限编辑此资源的描述".to_string(),
+            ));
+        }
+
+        // 更新描述
+        sqlx::query(
+            "UPDATE resources SET description = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2"
+        )
+        .bind(description)
+        .bind(resource_id)
+        .execute(pool)
+        .await
+        .map_err(|e| ResourceError::DatabaseError(e.to_string()))?;
+
+        log::info!(
+            "[Resource] 资源描述更新成功 | resource_id={}, user_id={}",
+            resource_id,
+            user.id
+        );
+
+        Ok(())
     }
 }

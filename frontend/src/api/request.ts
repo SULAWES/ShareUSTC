@@ -110,7 +110,8 @@ request.interceptors.response.use(
             return Promise.reject(new BusinessError(message, 400));
           }
           ElMessage.error(message);
-          break;
+          // 标记错误已处理，避免调用方重复显示
+          return Promise.reject(new ApiError(message, true));
         case 401:
           // 如果标记为跳过认证错误，静默处理
           if (skipAuthError) {
@@ -126,7 +127,7 @@ request.interceptors.response.use(
             if (router.currentRoute.value.path !== '/login') {
               window.location.href = '/login';
             }
-            return Promise.reject(error);
+            return Promise.reject(new ApiError('登录已失效', true));
           }
 
           // Token 过期，尝试刷新
@@ -149,35 +150,35 @@ request.interceptors.response.use(
               window.location.href = '/login';
             }
           }
-          break;
+          // 标记错误已处理，避免调用方重复显示
+          return Promise.reject(new ApiError('登录已失效', true));
         case 403:
           if (!skipAuthError) {
             ElMessage.error('没有权限访问');
           }
-          break;
+          return Promise.reject(new ApiError('没有权限访问', true));
         case 404:
           if (!skipAuthError) {
             ElMessage.error('请求的资源不存在');
           }
-          break;
+          return Promise.reject(new ApiError('请求的资源不存在', true));
         case 409:
           // 如果标记为跳过错误处理，静默处理
           if ((config as any)?.skipErrorHandler) {
             return Promise.reject(new BusinessError(message, 409));
           }
           ElMessage.error(message); // 如"用户名已存在"
-          break;
+          return Promise.reject(new ApiError(message, true));
         case 422:
           ElMessage.error(message);
-          break;
+          return Promise.reject(new ApiError(message, true));
         case 500:
           ElMessage.error('服务器错误');
-          break;
+          return Promise.reject(new ApiError('服务器错误', true));
         default:
           ElMessage.error(message);
+          return Promise.reject(new ApiError(message, true));
       }
-
-      return Promise.reject(error);
     } else {
       // 网络错误（CORS、超时等）
       // 如果标记为跳过认证错误，静默处理
