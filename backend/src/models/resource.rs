@@ -692,3 +692,444 @@ pub struct HotResourceItem {
     pub views: i32,
     pub likes: i32,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod resource_type_tests {
+        use super::*;
+
+        #[test]
+        fn test_from_extension_markdown() {
+            assert_eq!(ResourceType::from_extension("md"), ResourceType::WebMarkdown);
+            assert_eq!(ResourceType::from_extension("markdown"), ResourceType::WebMarkdown);
+            assert_eq!(ResourceType::from_extension("MD"), ResourceType::WebMarkdown);
+        }
+
+        #[test]
+        fn test_from_extension_pdf() {
+            assert_eq!(ResourceType::from_extension("pdf"), ResourceType::Pdf);
+            assert_eq!(ResourceType::from_extension("PDF"), ResourceType::Pdf);
+        }
+
+        #[test]
+        fn test_from_extension_ppt() {
+            assert_eq!(ResourceType::from_extension("ppt"), ResourceType::Ppt);
+            assert_eq!(ResourceType::from_extension("pptx"), ResourceType::Pptx);
+        }
+
+        #[test]
+        fn test_from_extension_doc() {
+            assert_eq!(ResourceType::from_extension("doc"), ResourceType::Doc);
+            assert_eq!(ResourceType::from_extension("docx"), ResourceType::Docx);
+        }
+
+        #[test]
+        fn test_from_extension_image() {
+            assert_eq!(ResourceType::from_extension("jpg"), ResourceType::Jpg);
+            assert_eq!(ResourceType::from_extension("jpeg"), ResourceType::Jpeg);
+            assert_eq!(ResourceType::from_extension("png"), ResourceType::Png);
+        }
+
+        #[test]
+        fn test_from_extension_unknown() {
+            assert_eq!(ResourceType::from_extension("exe"), ResourceType::Other);
+            assert_eq!(ResourceType::from_extension("unknown"), ResourceType::Other);
+            assert_eq!(ResourceType::from_extension(""), ResourceType::Other);
+        }
+
+        #[test]
+        fn test_supported_extensions() {
+            let extensions = ResourceType::supported_extensions();
+            assert!(extensions.contains(&"md"));
+            assert!(extensions.contains(&"pdf"));
+            assert!(extensions.contains(&"jpg"));
+            assert!(extensions.contains(&"zip"));
+            assert!(!extensions.contains(&"exe"));
+        }
+
+        #[test]
+        fn test_is_previewable() {
+            assert!(ResourceType::WebMarkdown.is_previewable());
+            assert!(ResourceType::Pdf.is_previewable());
+            assert!(ResourceType::Jpg.is_previewable());
+            assert!(!ResourceType::Ppt.is_previewable());
+            assert!(!ResourceType::Zip.is_previewable());
+        }
+
+        #[test]
+        fn test_mime_type() {
+            assert_eq!(ResourceType::Pdf.mime_type(), "application/pdf");
+            assert_eq!(ResourceType::Jpg.mime_type(), "image/jpeg");
+            assert_eq!(ResourceType::WebMarkdown.mime_type(), "text/markdown");
+        }
+
+        #[test]
+        fn test_default_resource_type() {
+            assert_eq!(ResourceType::default(), ResourceType::Other);
+        }
+
+        #[test]
+        fn test_resource_type_to_string() {
+            assert_eq!(ResourceType::Pdf.to_string(), "pdf");
+            assert_eq!(ResourceType::WebMarkdown.to_string(), "web_markdown");
+        }
+    }
+
+    mod resource_category_tests {
+        use super::*;
+
+        #[test]
+        fn test_default_category() {
+            assert_eq!(ResourceCategory::default(), ResourceCategory::Other);
+        }
+
+        #[test]
+        fn test_category_to_string() {
+            assert_eq!(ResourceCategory::ExamResult.to_string(), "exam_result");
+            assert_eq!(ResourceCategory::Note.to_string(), "note");
+            assert_eq!(ResourceCategory::Other.to_string(), "other");
+        }
+    }
+
+    mod audit_status_tests {
+        use super::*;
+
+        #[test]
+        fn test_default_audit_status() {
+            assert_eq!(AuditStatus::default(), AuditStatus::Pending);
+        }
+
+        #[test]
+        fn test_audit_status_to_string() {
+            assert_eq!(AuditStatus::Pending.to_string(), "pending");
+            assert_eq!(AuditStatus::Approved.to_string(), "approved");
+            assert_eq!(AuditStatus::Rejected.to_string(), "rejected");
+        }
+    }
+
+    mod resource_stats_tests {
+        use super::*;
+
+        fn create_test_stats(
+            difficulty_total: i32,
+            difficulty_count: i32,
+            overall_quality_total: i32,
+            overall_quality_count: i32,
+        ) -> ResourceStats {
+            ResourceStats {
+                resource_id: Uuid::new_v4(),
+                views: 0,
+                downloads: 0,
+                likes: 0,
+                difficulty_total,
+                difficulty_count,
+                overall_quality_total,
+                overall_quality_count,
+                answer_quality_total: 0,
+                answer_quality_count: 0,
+                format_quality_total: 0,
+                format_quality_count: 0,
+                detail_level_total: 0,
+                detail_level_count: 0,
+            }
+        }
+
+        #[test]
+        fn test_avg_difficulty_with_ratings() {
+            let stats = create_test_stats(25, 5, 0, 0);
+            assert_eq!(stats.avg_difficulty(), Some(5.0));
+        }
+
+        #[test]
+        fn test_avg_difficulty_no_ratings() {
+            let stats = create_test_stats(0, 0, 0, 0);
+            assert_eq!(stats.avg_difficulty(), None);
+        }
+
+        #[test]
+        fn test_avg_overall_quality_with_ratings() {
+            let stats = create_test_stats(0, 0, 35, 7);
+            assert_eq!(stats.avg_overall_quality(), Some(5.0));
+        }
+
+        #[test]
+        fn test_avg_overall_quality_no_ratings() {
+            let stats = create_test_stats(0, 0, 0, 0);
+            assert_eq!(stats.avg_overall_quality(), None);
+        }
+
+        #[test]
+        fn test_rating_count_single_dimension() {
+            let stats = ResourceStats {
+                resource_id: Uuid::new_v4(),
+                views: 0,
+                downloads: 0,
+                likes: 0,
+                difficulty_total: 10,
+                difficulty_count: 2,
+                overall_quality_total: 0,
+                overall_quality_count: 0,
+                answer_quality_total: 0,
+                answer_quality_count: 0,
+                format_quality_total: 0,
+                format_quality_count: 0,
+                detail_level_total: 0,
+                detail_level_count: 0,
+            };
+            assert_eq!(stats.rating_count(), 2);
+        }
+
+        #[test]
+        fn test_rating_count_multiple_dimensions() {
+            let stats = ResourceStats {
+                resource_id: Uuid::new_v4(),
+                views: 0,
+                downloads: 0,
+                likes: 0,
+                difficulty_total: 10,
+                difficulty_count: 3,
+                overall_quality_total: 20,
+                overall_quality_count: 5,
+                answer_quality_total: 0,
+                answer_quality_count: 0,
+                format_quality_total: 0,
+                format_quality_count: 0,
+                detail_level_total: 0,
+                detail_level_count: 0,
+            };
+            assert_eq!(stats.rating_count(), 5);
+        }
+
+        #[test]
+        fn test_rating_count_no_ratings() {
+            let stats = create_test_stats(0, 0, 0, 0);
+            assert_eq!(stats.rating_count(), 0);
+        }
+    }
+
+    mod upload_resource_request_tests {
+        use super::*;
+
+        fn create_upload_request(title: &str, tags: Option<Vec<String>>) -> UploadResourceRequest {
+            UploadResourceRequest {
+                title: title.to_string(),
+                course_name: None,
+                resource_type: ResourceType::Pdf,
+                category: ResourceCategory::Note,
+                tags,
+                description: None,
+                teacher_sns: None,
+                course_sns: None,
+                related_resource_ids: None,
+            }
+        }
+
+        #[test]
+        fn test_valid_upload_request() {
+            let req = create_upload_request("Valid Title", None);
+            assert!(req.validate().is_ok());
+        }
+
+        #[test]
+        fn test_empty_title() {
+            let req = create_upload_request("", None);
+            assert!(req.validate().is_err());
+            assert!(req.validate().unwrap_err().contains("标题不能为空"));
+        }
+
+        #[test]
+        fn test_whitespace_only_title() {
+            let req = create_upload_request("   ", None);
+            assert!(req.validate().is_err());
+        }
+
+        #[test]
+        fn test_title_too_long() {
+            let req = create_upload_request(&"a".repeat(256), None);
+            assert!(req.validate().is_err());
+            assert!(req.validate().unwrap_err().contains("不能超过255个字符"));
+        }
+
+        #[test]
+        fn test_title_max_length() {
+            let req = create_upload_request(&"a".repeat(255), None);
+            assert!(req.validate().is_ok());
+        }
+
+        #[test]
+        fn test_valid_tags() {
+            let tags = vec!["tag1".to_string(), "tag2".to_string()];
+            let req = create_upload_request("Title", Some(tags));
+            assert!(req.validate().is_ok());
+        }
+
+        #[test]
+        fn test_too_many_tags() {
+            let tags: Vec<String> = (0..11).map(|i| format!("tag{}", i)).collect();
+            let req = create_upload_request("Title", Some(tags));
+            assert!(req.validate().is_err());
+            assert!(req.validate().unwrap_err().contains("不能超过10个"));
+        }
+
+        #[test]
+        fn test_tag_too_long() {
+            let tags = vec!["a".repeat(51)];
+            let req = create_upload_request("Title", Some(tags));
+            assert!(req.validate().is_err());
+            assert!(req.validate().unwrap_err().contains("不能超过50个字符"));
+        }
+    }
+
+    mod resource_list_query_tests {
+        use super::*;
+
+        #[test]
+        fn test_default_page() {
+            let query = ResourceListQuery {
+                page: None,
+                per_page: None,
+                resource_type: None,
+                category: None,
+                sort_by: None,
+                sort_order: None,
+                teacher_sns: vec![],
+                course_sns: vec![],
+            };
+            assert_eq!(query.get_page(), 1);
+        }
+
+        #[test]
+        fn test_custom_page() {
+            let query = ResourceListQuery {
+                page: Some(5),
+                per_page: None,
+                resource_type: None,
+                category: None,
+                sort_by: None,
+                sort_order: None,
+                teacher_sns: vec![],
+                course_sns: vec![],
+            };
+            assert_eq!(query.get_page(), 5);
+        }
+
+        #[test]
+        fn test_page_less_than_one() {
+            let query = ResourceListQuery {
+                page: Some(0),
+                per_page: None,
+                resource_type: None,
+                category: None,
+                sort_by: None,
+                sort_order: None,
+                teacher_sns: vec![],
+                course_sns: vec![],
+            };
+            assert_eq!(query.get_page(), 1);
+        }
+
+        #[test]
+        fn test_default_per_page() {
+            let query = ResourceListQuery {
+                page: None,
+                per_page: None,
+                resource_type: None,
+                category: None,
+                sort_by: None,
+                sort_order: None,
+                teacher_sns: vec![],
+                course_sns: vec![],
+            };
+            assert_eq!(query.get_per_page(), 20);
+        }
+
+        #[test]
+        fn test_custom_per_page() {
+            let query = ResourceListQuery {
+                page: None,
+                per_page: Some(50),
+                resource_type: None,
+                category: None,
+                sort_by: None,
+                sort_order: None,
+                teacher_sns: vec![],
+                course_sns: vec![],
+            };
+            assert_eq!(query.get_per_page(), 50);
+        }
+
+        #[test]
+        fn test_per_page_too_high() {
+            let query = ResourceListQuery {
+                page: None,
+                per_page: Some(200),
+                resource_type: None,
+                category: None,
+                sort_by: None,
+                sort_order: None,
+                teacher_sns: vec![],
+                course_sns: vec![],
+            };
+            assert_eq!(query.get_per_page(), 100);
+        }
+
+        #[test]
+        fn test_per_page_less_than_one() {
+            let query = ResourceListQuery {
+                page: None,
+                per_page: Some(0),
+                resource_type: None,
+                category: None,
+                sort_by: None,
+                sort_order: None,
+                teacher_sns: vec![],
+                course_sns: vec![],
+            };
+            assert_eq!(query.get_per_page(), 1);
+        }
+    }
+
+    mod update_resource_content_request_tests {
+        use super::*;
+
+        fn create_update_request(content: &str) -> UpdateResourceContentRequest {
+            UpdateResourceContentRequest {
+                content: content.to_string(),
+            }
+        }
+
+        #[test]
+        fn test_valid_content() {
+            let req = create_update_request("This is valid content");
+            assert!(req.validate().is_ok());
+        }
+
+        #[test]
+        fn test_empty_content() {
+            let req = create_update_request("");
+            assert!(req.validate().is_err());
+            assert!(req.validate().unwrap_err().contains("内容不能为空"));
+        }
+
+        #[test]
+        fn test_whitespace_only_content() {
+            let req = create_update_request("   \n\t  ");
+            assert!(req.validate().is_err());
+        }
+
+        #[test]
+        fn test_content_too_large() {
+            let req = create_update_request(&"a".repeat(10 * 1024 * 1024 + 1));
+            assert!(req.validate().is_err());
+            assert!(req.validate().unwrap_err().contains("超过10MB"));
+        }
+
+        #[test]
+        fn test_content_max_size() {
+            let req = create_update_request(&"a".repeat(10 * 1024 * 1024));
+            assert!(req.validate().is_ok());
+        }
+    }
+}

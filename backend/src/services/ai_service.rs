@@ -70,6 +70,22 @@ impl AiService {
         // 当前阶段返回通用原因
         "AI 审核检测到此资源可能包含不合适的内容，建议检查资源内容是否符合社区规范。".to_string()
     }
+
+    /// 推荐资源（预留接口）
+    ///
+    /// 当前阶段：返回空列表
+    /// 后续阶段：接入真实 AI 推荐服务
+    #[allow(dead_code)]
+    pub async fn recommend_resources(
+        _user_id: uuid::Uuid,
+        _resource_type: Option<&str>,
+        _limit: i32,
+    ) -> Result<Vec<uuid::Uuid>, AiError> {
+        // TODO: 接入真实 AI 推荐服务
+        // 当前阶段返回空列表
+        log::debug!("AI 推荐资源: user_id={}", _user_id);
+        Ok(vec![])
+    }
 }
 
 #[cfg(test)]
