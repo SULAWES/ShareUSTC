@@ -322,19 +322,21 @@ pub async fn get_my_resources(
 }
 
 /// 下载资源
+/// 支持未登录用户（游客）下载
 #[get("/resources/{resource_id}/download")]
 pub async fn download_resource(
     state: web::Data<AppState>,
-    user: web::ReqData<CurrentUser>,
+    user: Option<web::ReqData<CurrentUser>>,
     path: web::Path<Uuid>,
     req: HttpRequest,
 ) -> impl Responder {
     let resource_id = path.into_inner();
+    let current_user = user.map(|u| u.into_inner());
 
     // 获取资源文件路径和存储类型（带权限检查）
-    match ResourceService::get_resource_file_path(&state.pool, resource_id, &user).await {
+    match ResourceService::get_resource_file_path(&state.pool, resource_id, current_user.as_ref()).await {
         Ok((file_path, resource_type, title, storage_type)) => {
-            let user_id = Some(user.id);
+            let user_id = current_user.map(|u| u.id);
             let content_type = crate::services::FileService::get_mime_type_by_type(&resource_type);
             let extension = crate::services::FileService::get_extension_by_type(&resource_type);
             let filename = format!("{}.{}", sanitize_filename(&title), extension);
@@ -521,16 +523,18 @@ fn build_content_disposition(filename: &str) -> String {
 /// 获取资源预览 URL
 /// 对于 OSS 存储的资源，返回带签名的直链 URL（避免服务器中转流量）
 /// 对于本地存储的资源，返回 /content 代理路径
+/// 支持未登录用户（游客）预览
 #[get("/resources/{resource_id}/preview-url")]
 pub async fn get_resource_preview_url(
     state: web::Data<AppState>,
-    user: web::ReqData<CurrentUser>,
+    user: Option<web::ReqData<CurrentUser>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let resource_id = path.into_inner();
+    let current_user = user.map(|u| u.into_inner());
 
     // 获取资源文件路径和存储类型（带权限检查）
-    match ResourceService::get_resource_file_path_for_preview(&state.pool, resource_id, &user).await {
+    match ResourceService::get_resource_file_path_for_preview(&state.pool, resource_id, current_user.as_ref()).await {
         Ok((file_path, resource_type, storage_type, updated_at)) => {
             let is_oss = storage_type.as_deref() == Some("oss");
 
@@ -595,16 +599,18 @@ pub async fn get_resource_preview_url(
 
 /// 获取资源文件内容（用于预览）
 /// 使用后端代理模式读取文件，本地存储和OSS兜底场景使用
+/// 支持未登录用户（游客）预览
 #[get("/resources/{resource_id}/content")]
 pub async fn get_resource_content(
     state: web::Data<AppState>,
-    user: web::ReqData<CurrentUser>,
+    user: Option<web::ReqData<CurrentUser>>,
     path: web::Path<Uuid>,
 ) -> impl Responder {
     let resource_id = path.into_inner();
+    let current_user = user.map(|u| u.into_inner());
 
     // 获取资源文件路径和存储类型（带权限检查）
-    match ResourceService::get_resource_file_path_for_preview(&state.pool, resource_id, &user).await {
+    match ResourceService::get_resource_file_path_for_preview(&state.pool, resource_id, current_user.as_ref()).await {
         Ok((file_path, resource_type, storage_type, updated_at)) => {
             // 根据资源实际的存储类型选择正确的存储后端读取文件
             // 使用后端代理模式，避免浏览器直接访问 OSS 产生 CORS 问题

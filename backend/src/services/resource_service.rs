@@ -1322,11 +1322,11 @@ impl ResourceService {
 
     /// 获取资源文件路径（检查审核状态和权限，用于下载）
     /// 返回：(file_path, resource_type, title, storage_type)
-    /// 非管理员只能访问已通过审核的资源
+    /// 只有管理员或上传者可以访问未审核的资源，其他情况（包括游客）只能访问已通过审核的资源
     pub async fn get_resource_file_path(
         pool: &PgPool,
         resource_id: Uuid,
-        user: &CurrentUser,
+        user: Option<&CurrentUser>,
     ) -> Result<(String, String, String, Option<String>), ResourceError> {
         // 获取资源信息，包括审核状态和上传者
         let row: (String, String, String, Option<String>, String, Uuid) = sqlx::query_as(
@@ -1341,9 +1341,9 @@ impl ResourceService {
         let audit_status = row.4;
         let uploader_id = row.5;
 
-        // 检查权限：非管理员且非上传者时，只能访问已通过审核的资源
-        let is_admin = matches!(user.role, crate::models::UserRole::Admin);
-        let is_uploader = user.id == uploader_id;
+        // 检查权限：只有管理员或上传者可以访问未审核的资源
+        let is_admin = user.map(|u| matches!(u.role, crate::models::UserRole::Admin)).unwrap_or(false);
+        let is_uploader = user.map(|u| u.id == uploader_id).unwrap_or(false);
 
         if audit_status != "approved" && !is_admin && !is_uploader {
             return Err(ResourceError::Unauthorized(
@@ -1356,11 +1356,11 @@ impl ResourceService {
 
     /// 获取资源文件路径（检查审核状态和权限，用于预览）
     /// 返回：(file_path, resource_type, storage_type, updated_at)
-    /// 非管理员只能访问已通过审核的资源
+    /// 只有管理员或上传者可以访问未审核的资源，其他情况（包括游客）只能访问已通过审核的资源
     pub async fn get_resource_file_path_for_preview(
         pool: &PgPool,
         resource_id: Uuid,
-        user: &CurrentUser,
+        user: Option<&CurrentUser>,
     ) -> Result<(String, String, Option<String>, chrono::NaiveDateTime), ResourceError> {
         // 获取资源信息，包括审核状态和上传者
         let row: (String, String, Option<String>, chrono::NaiveDateTime, String, Uuid) =
@@ -1374,9 +1374,9 @@ impl ResourceService {
         let audit_status = row.4;
         let uploader_id = row.5;
 
-        // 检查权限：非管理员且非上传者时，只能访问已通过审核的资源
-        let is_admin = matches!(user.role, crate::models::UserRole::Admin);
-        let is_uploader = user.id == uploader_id;
+        // 检查权限：只有管理员或上传者可以访问未审核的资源
+        let is_admin = user.map(|u| matches!(u.role, crate::models::UserRole::Admin)).unwrap_or(false);
+        let is_uploader = user.map(|u| u.id == uploader_id).unwrap_or(false);
 
         if audit_status != "approved" && !is_admin && !is_uploader {
             return Err(ResourceError::Unauthorized(
