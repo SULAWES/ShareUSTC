@@ -242,7 +242,7 @@ class BatchUploader:
                 time.sleep(self.retry_delay * attempt)  # 指数退避
             
             try:
-                result = self._do_upload(task, metadata)
+                result = self._do_upload(task, metadata, start_time)
                 if result.success:
                     return result
                     
@@ -284,54 +284,56 @@ class BatchUploader:
             duration=time.time() - start_time,
         )
     
-    def _do_upload(self, task: UploadTask, metadata: Dict[str, Any]) -> UploadResult:
+    def _do_upload(self, task: UploadTask, metadata: Dict[str, Any], start_time: float) -> UploadResult:
         """执行实际上传
-        
+
         对于大文件使用流式上传并显示进度条。
-        
+
         Args:
             task: 上传任务
             metadata: 资源元数据
-            
+            start_time: 开始时间戳（用于计算耗时）
+
         Returns:
             上传结果
         """
         url = f"{self.base_url}/api/resources"
         file_size = task.file_path.stat().st_size
-        
+
         logger.debug(f"POST {url}")
         logger.debug(f"文件: {task.file_path} ({format_file_size(file_size)})")
-        
+
         # 判断是否为超大文件
         is_large_file = file_size > self.LARGE_FILE_THRESHOLD
-        
+
         if is_large_file:
             # 大文件使用流式上传并显示进度
-            return self._upload_large_file(url, task, metadata, file_size)
+            return self._upload_large_file(url, task, metadata, file_size, start_time)
         else:
             # 小文件直接上传
-            return self._upload_small_file(url, task, metadata)
+            return self._upload_small_file(url, task, metadata, start_time)
     
-    def _upload_small_file(self, url: str, task: UploadTask, metadata: Dict) -> UploadResult:
+    def _upload_small_file(self, url: str, task: UploadTask, metadata: Dict, start_time: float) -> UploadResult:
         """上传小文件（直接上传）
-        
+
         Args:
             url: 上传URL
             task: 上传任务
             metadata: 资源元数据
-            
+            start_time: 开始时间戳（用于计算耗时）
+
         Returns:
             上传结果
         """
         data = {
             "metadata": json.dumps(metadata, ensure_ascii=False),
         }
-        
+
         with open(task.file_path, "rb") as f:
             files = {
                 "file": (task.file_path.name, f, task.mime_type or "application/octet-stream"),
             }
-            
+
             # 使用分离的超时设置：连接超时10秒，读取使用配置的超时
             response = self.session.post(
                 url,
@@ -339,10 +341,11 @@ class BatchUploader:
                 files=files,
                 timeout=(10, self.timeout),  # (连接超时, 读取超时)
             )
-        
-        return self._handle_response(response, task)
+
+        duration = time.time() - start_time
+        return self._handle_response(response, task, duration)
     
-    def _upload_large_file(self, url: str, task: UploadTask, metadata: Dict, file_size: int) -> UploadResult:
+    def _upload_large_file(self, url: str, task: UploadTask, metadata: Dict, file_size: int, start_time: float) -> UploadResult:
         """上传大文件（真正的流式上传+进度条）
 
         使用 requests_toolbelt.MultipartEncoder 实现真正的流式 multipart 上传，
@@ -353,6 +356,7 @@ class BatchUploader:
             task: 上传任务
             metadata: 资源元数据
             file_size: 文件大小（字节）
+            start_time: 开始时间戳（用于计算耗时）
 
         Returns:
             上传结果
@@ -413,7 +417,8 @@ class BatchUploader:
                 timeout=(30, actual_timeout),  # (连接超时30s, 读取超时动态计算)
             )
 
-            return self._handle_response(response, task)
+            duration = time.time() - start_time
+            return self._handle_response(response, task, duration)
 
         except Exception:
             raise
@@ -424,19 +429,20 @@ class BatchUploader:
             if progress_bar is not None:
                 progress_bar.close()
     
-    def _handle_response(self, response: requests.Response, task: UploadTask) -> UploadResult:
+    def _handle_response(self, response: requests.Response, task: UploadTask, duration: float) -> UploadResult:
         """处理上传响应
-        
+
         Args:
             response: HTTP 响应
             task: 上传任务
-            
+            duration: 上传耗时（秒）
+
         Returns:
             上传结果
         """
         logger.debug(f"响应状态码: {response.status_code}")
         logger.debug(f"响应内容: {response.text[:500]}")
-        
+
         # 处理响应
         if response.status_code == 201:
             # 上传成功
@@ -446,8 +452,9 @@ class BatchUploader:
                 task=task,
                 resource_id=data.get("id"),
                 message="上传成功",
+                duration=duration,
             )
-        
+
         elif response.status_code == 400:
             # 请求参数错误
             try:
@@ -458,35 +465,39 @@ class BatchUploader:
                 success=False,
                 task=task,
                 error=f"参数错误: {error_msg}",
+                duration=duration,
             )
-        
+
         elif response.status_code == 401:
             # 未认证
             return UploadResult(
                 success=False,
                 task=task,
                 error="登录已过期，请重新登录",
+                duration=duration,
             )
-        
+
         elif response.status_code == 413:
             # 文件过大
             return UploadResult(
                 success=False,
                 task=task,
                 error="文件过大，超过服务器限制",
+                duration=duration,
             )
-        
+
         else:
             # 其他错误
             try:
                 error_msg = response.json().get("message", f"服务器错误: {response.status_code}")
             except:
                 error_msg = f"服务器错误: {response.status_code}"
-            
+
             return UploadResult(
                 success=False,
                 task=task,
                 error=error_msg,
+                duration=duration,
             )
 
 
