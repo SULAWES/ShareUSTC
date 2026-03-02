@@ -397,6 +397,74 @@ export const batchImportCoursesFromFile = (file: File): Promise<BatchImportCours
   });
 };
 
+// =====================
+// 资料管理相关
+// =====================
+
+export interface AdminResource {
+  id: string;
+  title: string;
+  courseName?: string;
+  resourceType: string;
+  category: string;
+  uploaderId: string;
+  uploaderName?: string;
+  authorId?: string;
+  authorName?: string;
+  auditStatus: string;
+  fileSize?: number;
+  createdAt: string;
+  views?: number;
+  downloads?: number;
+  likes?: number;
+}
+
+export interface AdminResourceListResponse {
+  resources: AdminResource[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
+export interface AdminFavorite {
+  id: string;
+  name: string;
+  resourceCount: number;
+  createdAt: string;
+}
+
+export interface AdminFavoriteListResponse {
+  favorites: AdminFavorite[];
+  total: number;
+}
+
+export interface DeleteFavoriteResourcesResult {
+  deletedCount: number;
+  favoriteName: string;
+}
+
+export interface GetAllResourcesParams {
+  page?: number;
+  perPage?: number;
+  keyword?: string;
+}
+
+export const getAllResources = (params: GetAllResourcesParams = {}): Promise<AdminResourceListResponse> => {
+  return request.get('/admin/resources/all', { params });
+};
+
+export const adminDeleteResource = (resourceId: string): Promise<void> => {
+  return request.delete(`/admin/resources/${resourceId}`);
+};
+
+export const getAdminFavorites = (): Promise<AdminFavoriteListResponse> => {
+  return request.get('/admin/favorites');
+};
+
+export const deleteAllFavoriteResources = (favoriteId: string): Promise<DeleteFavoriteResourcesResult> => {
+  return request.delete(`/admin/favorites/${favoriteId}/resources`);
+};
+
 // 导出API对象
 export const adminApi = {
   getDashboardStats,
@@ -429,5 +497,11 @@ export const adminApi = {
   batchImportTeachersFromFile,
   // 批量删除
   batchDeleteTeachers,
-  batchDeleteCourses
+  batchDeleteCourses,
+  // 资料管理
+  getAllResources,
+  adminDeleteResource,
+  getAdminFavorites,
+  deleteAllFavoriteResources
 };
+

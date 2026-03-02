@@ -51,7 +51,8 @@ import {
   Fold,
   Expand,
   User,
-  Reading
+  Reading,
+  Folder
 } from '@element-plus/icons-vue';
 
 const isCollapsed = ref(false);
@@ -62,6 +63,7 @@ const menuItems = [
   { path: '/admin/teachers', title: '教师管理', icon: User },
   { path: '/admin/courses', title: '课程管理', icon: Reading },
   { path: '/admin/resources', title: '资源审核', icon: Document },
+  { path: '/admin/resource-management', title: '资料管理', icon: Folder },
   { path: '/admin/comments', title: '评论管理', icon: ChatDotSquare },
   { path: '/admin/notifications', title: '发送通知', icon: Bell },
   { path: '/admin/stats', title: '详细统计', icon: DataLine },

@@ -1,7 +1,11 @@
+use std::sync::Arc;
+
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
+
+use crate::models::CurrentUser;
 
 /// 管理员服务错误类型
 #[derive(Debug)]
@@ -1320,6 +1324,153 @@ impl AdminService {
             per_page,
         })
     }
+
+    /// 获取所有资源列表（支持关键词搜索）
+    pub async fn get_all_resources(
+        pool: &PgPool,
+        page: i32,
+        per_page: i32,
+        keyword: Option<String>,
+    ) -> Result<AdminResourceListResponse, AdminError> {
+        let offset = (page - 1) * per_page;
+
+        // 构建基础查询
+        let mut query = String::from(
+            r#"
+            SELECT
+                r.id, r.title, r.course_name, r.resource_type, r.category,
+                r.uploader_id, u.username as uploader_name,
+                r.author_id, a.username as author_name,
+                r.audit_status, r.file_size, r.created_at,
+                rs.views, rs.downloads, rs.likes
+            FROM resources r
+            JOIN users u ON r.uploader_id = u.id
+            LEFT JOIN users a ON r.author_id = a.id
+            LEFT JOIN resource_stats rs ON r.id = rs.resource_id
+            WHERE 1=1
+            "#,
+        );
+
+        let mut count_query = String::from("SELECT COUNT(*) FROM resources r WHERE 1=1");
+
+        // 添加关键词搜索条件
+        if let Some(ref kw) = keyword {
+            if !kw.is_empty() {
+                let search_pattern = format!("%{}%", kw);
+                query.push_str(" AND (r.title ILIKE $3 OR r.course_name ILIKE $3)");
+                count_query.push_str(" AND (r.title ILIKE $1 OR r.course_name ILIKE $1)");
+
+                // 获取总数（带关键词）
+                let total: i64 = sqlx::query_scalar(&count_query)
+                    .bind(&search_pattern)
+                    .fetch_one(pool)
+                    .await
+                    .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+
+                // 获取资源列表
+                let resources: Vec<AdminResourceListItem> = sqlx::query_as(&format!(
+                    "{} ORDER BY r.created_at DESC LIMIT $1 OFFSET $2",
+                    query
+                ))
+                .bind(per_page as i64)
+                .bind(offset as i64)
+                .bind(search_pattern)
+                .fetch_all(pool)
+                .await
+                .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+
+                return Ok(AdminResourceListResponse {
+                    resources,
+                    total,
+                    page,
+                    per_page,
+                });
+            }
+        }
+
+        // 获取总数（不带关键词）
+        let total: i64 = sqlx::query_scalar(&count_query)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+
+        // 获取资源列表
+        let resources: Vec<AdminResourceListItem> = sqlx::query_as(&format!(
+            "{} ORDER BY r.created_at DESC LIMIT $1 OFFSET $2",
+            query
+        ))
+        .bind(per_page as i64)
+        .bind(offset as i64)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+
+        Ok(AdminResourceListResponse {
+            resources,
+            total,
+            page,
+            per_page,
+        })
+    }
+
+    /// 删除收藏夹内的所有资源
+    pub async fn delete_all_favorite_resources(
+        pool: &PgPool,
+        user: &CurrentUser,
+        storage: &Arc<dyn crate::services::StorageBackend>,
+        favorite_id: Uuid,
+    ) -> Result<DeleteFavoriteResourcesResult, AdminError> {
+        use crate::services::ResourceService;
+        use crate::services::FavoriteService;
+
+        // 获取收藏夹详情（检查所有权）
+        let favorite_detail = FavoriteService::get_favorite_detail(pool, favorite_id, user.id)
+            .await
+            .map_err(|e| match e {
+                crate::services::ResourceError::NotFound(msg) => AdminError::NotFound(msg),
+                _ => AdminError::DatabaseError(e.to_string()),
+            })?;
+
+        let resource_count = favorite_detail.resources.len() as i64;
+        let favorite_name = favorite_detail.name.clone();
+
+        if resource_count == 0 {
+            return Ok(DeleteFavoriteResourcesResult {
+                deleted_count: 0,
+                favorite_name,
+            });
+        }
+
+        // 获取资源ID列表
+        let resource_ids: Vec<Uuid> = favorite_detail
+            .resources
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+
+        let mut deleted_count = 0i64;
+
+        // 逐个删除资源
+        for resource_id in resource_ids {
+            match ResourceService::delete_resource(pool, user, storage, resource_id).await {
+                Ok(_) => {
+                    deleted_count += 1;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[AdminService] 删除资源失败 | resource_id={}, error={}",
+                        resource_id, e
+                    );
+                    // 继续删除其他资源
+                }
+            }
+        }
+
+        Ok(DeleteFavoriteResourcesResult {
+            deleted_count,
+            favorite_name,
+        })
+    }
 }
 
 /// 通知目标枚举
@@ -1502,4 +1653,43 @@ pub struct AuditLogListResponse {
     pub total: i64,
     pub page: i32,
     pub per_page: i32,
+}
+
+/// 管理员资源列表项
+#[derive(Debug, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminResourceListItem {
+    pub id: Uuid,
+    pub title: String,
+    pub course_name: Option<String>,
+    pub resource_type: String,
+    pub category: String,
+    pub uploader_id: Uuid,
+    pub uploader_name: Option<String>,
+    pub author_id: Option<Uuid>,
+    pub author_name: Option<String>,
+    pub audit_status: String,
+    pub file_size: Option<i64>,
+    pub created_at: NaiveDateTime,
+    pub views: Option<i32>,
+    pub downloads: Option<i32>,
+    pub likes: Option<i32>,
+}
+
+/// 管理员资源列表响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminResourceListResponse {
+    pub resources: Vec<AdminResourceListItem>,
+    pub total: i64,
+    pub page: i32,
+    pub per_page: i32,
+}
+
+/// 删除收藏夹资源结果
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteFavoriteResourcesResult {
+    pub deleted_count: i64,
+    pub favorite_name: String,
 }

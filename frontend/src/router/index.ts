@@ -9,6 +9,7 @@ import UserManagement from '../views/admin/UserManagement.vue';
 import TeacherManagement from '../views/admin/TeacherManagement.vue';
 import CourseManagement from '../views/admin/CourseManagement.vue';
 import ResourceAudit from '../views/admin/ResourceAudit.vue';
+import ResourceManagement from '../views/admin/ResourceManagement.vue';
 import CommentManagement from '../views/admin/CommentManagement.vue';
 import SendNotification from '../views/admin/SendNotification.vue';
 import DetailedStats from '../views/admin/DetailedStats.vue';
@@ -148,6 +149,11 @@ const routes = [
         path: 'resources',
         name: 'ResourceAudit',
         component: ResourceAudit
+      },
+      {
+        path: 'resource-management',
+        name: 'ResourceManagement',
+        component: ResourceManagement
       },
       {
         path: 'comments',

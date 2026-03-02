@@ -457,4 +457,31 @@ impl AuditLogService {
         )
         .await
     }
+
+    /// 记录通用操作日志
+    pub async fn log_action(
+        pool: &PgPool,
+        user_id: Uuid,
+        action: &str,
+        target_type: Option<&str>,
+        target_id: Option<Uuid>,
+        details: Option<serde_json::Value>,
+        ip_address: Option<&str>,
+    ) -> Result<(), sqlx::Error> {
+        let action_enum = match action {
+            "delete_favorite_resources" => AuditAction::AdminAction,
+            _ => AuditAction::AdminAction,
+        };
+
+        Self::log(
+            pool,
+            Some(user_id),
+            action_enum,
+            target_type,
+            target_id,
+            details,
+            ip_address,
+        )
+        .await
+    }
 }

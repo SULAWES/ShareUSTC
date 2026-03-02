@@ -14,9 +14,10 @@ use crate::models::{
 };
 use crate::services::{
     AdminError, AdminService, AuditLogQuery, AuditLogService, AuditResourceRequest, CourseError,
-    CourseService, TeacherError, TeacherService, UpdateUserStatusRequest,
+    CourseService, FavoriteService, ResourceError, ResourceService, TeacherError, TeacherService,
+    UpdateUserStatusRequest,
 };
-use crate::utils::{bad_request, forbidden, internal_error, no_content, not_found};
+use crate::utils::{bad_request, conflict, forbidden, internal_error, no_content, not_found};
 
 /// 检查用户是否是管理员
 fn check_admin(current_user: &CurrentUser) -> Result<(), AdminError> {
@@ -59,6 +60,20 @@ fn handle_course_error(err: CourseError) -> HttpResponse {
         CourseError::ValidationError(msg) => bad_request(&msg),
         CourseError::DatabaseError(msg) => {
             log::error!("[Admin] 课程服务数据库错误 | error={}", msg);
+            internal_error("服务器内部错误")
+        }
+    }
+}
+
+/// 将ResourceError转换为HttpResponse
+fn handle_resource_error(err: ResourceError) -> HttpResponse {
+    match err {
+        ResourceError::NotFound(msg) => not_found(&msg),
+        ResourceError::ValidationError(msg) => bad_request(&msg),
+        ResourceError::Unauthorized(msg) => forbidden(&msg),
+        ResourceError::Conflict(msg) => conflict(&msg),
+        _ => {
+            log::error!("[Admin] 资源服务错误 | error={}", err);
             internal_error("服务器内部错误")
         }
     }
@@ -1177,6 +1192,172 @@ async fn batch_delete_courses(
     }
 }
 
+/// ==================== 资料管理接口 ====================
+
+/// 获取所有资源列表（支持关键词搜索）
+#[get("/admin/resources/all")]
+async fn get_all_resources(
+    data: web::Data<AppState>,
+    current_user: actix_web::web::ReqData<CurrentUser>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> impl Responder {
+    let user = current_user.into_inner();
+    log::info!("[Admin] 获取所有资源列表 | admin_id={}", user.id);
+
+    if let Err(e) = check_admin(&user) {
+        return handle_admin_error(e);
+    }
+
+    let page = query
+        .get("page")
+        .and_then(|p| p.parse::<i32>().ok())
+        .unwrap_or(1);
+    let per_page = query
+        .get("perPage")
+        .and_then(|p| p.parse::<i32>().ok())
+        .unwrap_or(20);
+    let keyword = query.get("keyword").cloned();
+
+    match AdminService::get_all_resources(&data.pool, page, per_page, keyword).await {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(e) => handle_admin_error(e),
+    }
+}
+
+/// 管理员删除资源
+#[delete("/admin/resources/{resource_id}")]
+async fn admin_delete_resource(
+    data: web::Data<AppState>,
+    current_user: actix_web::web::ReqData<CurrentUser>,
+    path: web::Path<Uuid>,
+    req: HttpRequest,
+) -> impl Responder {
+    let user = current_user.into_inner();
+
+    if let Err(e) = check_admin(&user) {
+        return handle_admin_error(e);
+    }
+
+    let resource_id = path.into_inner();
+    log::info!(
+        "[Admin] 管理员删除资源 | admin_id={}, resource_id={}",
+        user.id,
+        resource_id
+    );
+
+    match ResourceService::delete_resource(&data.pool, &user, &data.storage, resource_id).await {
+        Ok(title) => {
+            log::info!(
+                "[Admin] 资源删除成功 | admin_id={}, resource_id={}, title={}",
+                user.id,
+                resource_id,
+                title
+            );
+
+            // 记录审计日志
+            let ip_address = req.peer_addr().map(|addr| addr.ip().to_string());
+            if let Err(e) = AuditLogService::log_delete_resource(
+                &data.pool,
+                user.id,
+                resource_id,
+                &title,
+                ip_address.as_deref(),
+            )
+            .await
+            {
+                log::warn!(
+                    "[Audit] 记录删除资源日志失败 | admin_id={}, resource_id={}, error={}",
+                    user.id,
+                    resource_id,
+                    e
+                );
+            }
+
+            no_content()
+        }
+        Err(e) => handle_resource_error(e),
+    }
+}
+
+/// 获取管理员的收藏夹列表
+#[get("/admin/favorites")]
+async fn get_admin_favorites(
+    data: web::Data<AppState>,
+    current_user: actix_web::web::ReqData<CurrentUser>,
+) -> impl Responder {
+    let user = current_user.into_inner();
+    log::info!("[Admin] 获取收藏夹列表 | admin_id={}", user.id);
+
+    if let Err(e) = check_admin(&user) {
+        return handle_admin_error(e);
+    }
+
+    match FavoriteService::get_user_favorites(&data.pool, user.id).await {
+        Ok(response) => HttpResponse::Ok().json(response),
+        Err(e) => handle_resource_error(e),
+    }
+}
+
+/// 删除收藏夹内的所有资源
+#[delete("/admin/favorites/{favorite_id}/resources")]
+async fn delete_all_favorite_resources(
+    data: web::Data<AppState>,
+    current_user: actix_web::web::ReqData<CurrentUser>,
+    path: web::Path<Uuid>,
+    req: HttpRequest,
+) -> impl Responder {
+    let user = current_user.into_inner();
+
+    if let Err(e) = check_admin(&user) {
+        return handle_admin_error(e);
+    }
+
+    let favorite_id = path.into_inner();
+    log::info!(
+        "[Admin] 删除收藏夹内所有资源 | admin_id={}, favorite_id={}",
+        user.id,
+        favorite_id
+    );
+
+    match AdminService::delete_all_favorite_resources(&data.pool, &user, &data.storage, favorite_id).await {
+        Ok(result) => {
+            log::info!(
+                "[Admin] 收藏夹内资源删除成功 | admin_id={}, favorite_id={}, deleted_count={}",
+                user.id,
+                favorite_id,
+                result.deleted_count
+            );
+
+            // 记录审计日志
+            let ip_address = req.peer_addr().map(|addr| addr.ip().to_string());
+            if let Err(e) = AuditLogService::log_action(
+                &data.pool,
+                user.id,
+                "delete_favorite_resources",
+                Some("favorite"),
+                Some(favorite_id),
+                Some(serde_json::json!({
+                    "deleted_count": result.deleted_count,
+                    "favorite_name": result.favorite_name
+                })),
+                ip_address.as_deref(),
+            )
+            .await
+            {
+                log::warn!(
+                    "[Audit] 记录删除收藏夹资源日志失败 | admin_id={}, favorite_id={}, error={}",
+                    user.id,
+                    favorite_id,
+                    e
+                );
+            }
+
+            HttpResponse::Ok().json(result)
+        }
+        Err(e) => handle_admin_error(e),
+    }
+}
+
 /// 配置管理后台路由
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(get_dashboard)
@@ -1210,5 +1391,10 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         .service(batch_import_courses_from_file)
         // 批量删除
         .service(batch_delete_teachers)
-        .service(batch_delete_courses);
+        .service(batch_delete_courses)
+        // 资料管理
+        .service(get_all_resources)
+        .service(admin_delete_resource)
+        .service(get_admin_favorites)
+        .service(delete_all_favorite_resources);
 }

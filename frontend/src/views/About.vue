@@ -158,6 +158,36 @@
         </div>
       </section>
 
+      <!-- 当前资源来源 -->
+      <section class="section">
+        <h2>当前资源来源</h2>
+        <div class="resource-source-list">
+
+          <div class="resource-source-item">
+            <div class="source-info">
+              <span class="source-label">资料来源：</span>
+              <a
+                href="https://github.com/USTC-Resource/USTC-Course"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="source-link"
+              >
+                <el-icon><Link /></el-icon>
+                Github: USTC-Resource/USTC-Course
+              </a>
+            </div>
+            <div class="uploader-info">
+              <span class="uploader-label">上传者：</span>
+              <router-link to="/user/9ce37c81-8560-40c2-8d0f-05d079401273" class="uploader-link">
+                <el-icon><User /></el-icon>
+                USTC_Course
+              </router-link>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
       <!-- 联系我们 -->
       <section class="section">
         <h2>联系我们</h2>
@@ -278,7 +308,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue';
-import { Upload, Search, Star, HomeFilled, Trophy, Loading } from '@element-plus/icons-vue';
+import { Upload, Search, Star, HomeFilled, Trophy, Loading, Link, User } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 
 interface Contributor {
@@ -1013,6 +1043,72 @@ const copyQQGroup = async () => {
   line-height: 1.6;
 }
 
+/* 当前资源来源 */
+.resource-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.resource-source-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 20px;
+  background: #f6f8fa;
+  border-radius: 8px;
+  border-left: 3px solid #409eff;
+}
+
+.source-info,
+.uploader-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.source-label,
+.uploader-label {
+  font-size: 14px;
+  color: #606266;
+  white-space: nowrap;
+}
+
+.source-link,
+.uploader-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.source-link {
+  color: #0969da;
+}
+
+.source-link:hover {
+  color: #409eff;
+  text-decoration: underline;
+}
+
+.uploader-link {
+  color: #67c23a;
+}
+
+.uploader-link:hover {
+  color: #85ce61;
+  text-decoration: underline;
+}
+
+.source-link .el-icon,
+.uploader-link .el-icon {
+  font-size: 14px;
+}
+
 /* QQ 群号 */
 .qq-group {
   color: #409eff;
@@ -1109,6 +1205,18 @@ const copyQQGroup = async () => {
 
   .changelog-date {
     min-width: auto;
+  }
+
+  /* 资源来源移动端适配 */
+  .resource-source-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .source-info,
+  .uploader-info {
+    width: 100%;
   }
 }
 </style>
