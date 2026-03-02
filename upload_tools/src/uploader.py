@@ -128,10 +128,10 @@ class BatchUploader:
         self.retry_count = retry_count
         self.retry_delay = retry_delay
         
-        logger.debug(
-            f"BatchUploader 初始化，timeout: {timeout}, "
-            f"retry_count: {retry_count}, retry_delay: {retry_delay}"
-        )
+        logger.debug("BatchUploader 初始化:")
+        logger.debug(f"  timeout: {timeout}")
+        logger.debug(f"  retry_count: {retry_count}")
+        logger.debug(f"  retry_delay: {retry_delay}")
     
     def upload(
         self,
@@ -158,15 +158,11 @@ class BatchUploader:
             
             logger.info(f"[{i}/{total}] 正在上传: {task.title} ({size_str})")
             
-            # 进度回调
-            if progress_callback:
-                progress_callback(i - 1, total, task)
-            
             # 执行上传
             result = self.upload_single(task)
             results.append(result)
-            
-            # 上传后进度回调
+
+            # 进度回调（上传完成后更新）
             if progress_callback:
                 progress_callback(i, total, task)
             
@@ -233,7 +229,9 @@ class BatchUploader:
             "courseSns": task.matched_course_sns,
         }
         
-        logger.debug(f"上传元数据: {json.dumps(metadata, ensure_ascii=False)}")
+        logger.debug("上传元数据:")
+        for key, value in metadata.items():
+            logger.debug(f"  {key}: {value}")
         
         # 执行上传（带重试）
         for attempt in range(self.retry_count + 1):

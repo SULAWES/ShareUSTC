@@ -335,14 +335,26 @@ def main(csv_path, config_path, login, logout, template, resume, dry_run, output
     
     # 匹配实体
     print_info("正在匹配课程和教师信息...")
+    tasks_to_upload = []
     for task in tasks:
-        warnings, errors = match_task_entities(
-            task, matcher, 
+        warnings, errors, should_upload = match_task_entities(
+            task, matcher,
             interactive=(not non_interactive and not dry_run)
         )
         if warnings:
             for warning in warnings:
                 print_warning(f"[{task.title}] {warning}")
+        if should_upload:
+            tasks_to_upload.append(task)
+        else:
+            print_info(f"跳过上传: {task.title}")
+
+    # 更新任务列表
+    original_count = len(tasks)
+    tasks = tasks_to_upload
+    skipped_count = original_count - len(tasks)
+    if skipped_count > 0:
+        print_info(f"共跳过 {skipped_count} 个资源")
     
     # 模拟运行模式
     if dry_run:
