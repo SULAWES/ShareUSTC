@@ -1,0 +1,10 @@
+/dev_docs/
+/files/
+/.shareustc
+/config.example.yaml
+/config.yaml
+/*.csv
+__pycache__/
+*.log
+*.bak
+*.tmp

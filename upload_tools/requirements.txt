@@ -1,0 +1,24 @@
+# ShareUSTC 批量上传工具 - 依赖列表 (Ubuntu/Linux 版本)
+
+# HTTP 请求
+requests>=2.31.0,<3.0.0
+urllib3>=1.26.0,<2.0.0  # requests-toolbelt 需要 urllib3 < 2.0
+
+# 命令行接口
+click>=8.1.0,<9.0.0
+
+# 配置文件解析
+pyyaml>=6.0.0,<7.0.0
+
+# 进度条显示
+tqdm>=4.66.0,<5.0.0
+
+# 跨平台彩色终端输出
+colorama>=0.4.6,<0.5.0
+
+# 文件类型检测（可选，需要安装系统依赖 libmagic）
+# Ubuntu/Debian 系统请先执行: sudo apt-get install libmagic1
+python-magic>=0.4.27,<0.5.0
+
+# 大文件流式上传
+requests-toolbelt>=0.10.0,<1.0.0

@@ -1,0 +1,2 @@
+[console_scripts]
+shareustc-upload = cli:main

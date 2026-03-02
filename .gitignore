@@ -4,9 +4,8 @@
 .env
 .idea
 .vscode
-/vibe
 /backend/uploads/
 .claude
 AGENTS.md
-/dev_doc
-/aliyun
+/dev_docs/
+/aliyun/

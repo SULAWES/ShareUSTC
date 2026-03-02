@@ -1,0 +1,8 @@
+README.md
+setup.py
+src/shareustc_upload.egg-info/PKG-INFO
+src/shareustc_upload.egg-info/SOURCES.txt
+src/shareustc_upload.egg-info/dependency_links.txt
+src/shareustc_upload.egg-info/entry_points.txt
+src/shareustc_upload.egg-info/requires.txt
+src/shareustc_upload.egg-info/top_level.txt
