@@ -11,6 +11,7 @@ mod db;
 mod middleware;
 mod models;
 mod services;
+mod tasks;
 mod utils;
 
 use crate::utils::{internal_error, not_found};
@@ -238,11 +239,14 @@ async fn main() -> std::io::Result<()> {
 
     // 创建应用状态
     let app_state = web::Data::new(AppState::new(
-        pool,
+        pool.clone(),
         config.jwt_secret.clone(),
         config.cookie_secure,
-        storage,
+        storage.clone(),
     ));
+
+    // 启动文件哈希计算后台任务
+    tasks::file_hash_task::start_file_hash_task(pool, storage).await;
 
     log::info!("[System] Server starting at http://{}", server_addr);
     log::debug!("[System] Debug logging enabled");

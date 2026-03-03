@@ -1279,6 +1279,70 @@ async fn admin_delete_resource(
     }
 }
 
+/// 管理员重新计算资源哈希
+#[post("/admin/resources/{resource_id}/recalculate-hash")]
+async fn admin_recalculate_resource_hash(
+    data: web::Data<AppState>,
+    current_user: actix_web::web::ReqData<CurrentUser>,
+    path: web::Path<Uuid>,
+    req: HttpRequest,
+) -> impl Responder {
+    let user = current_user.into_inner();
+
+    if let Err(e) = check_admin(&user) {
+        return handle_admin_error(e);
+    }
+
+    let resource_id = path.into_inner();
+    log::info!(
+        "[Admin] 管理员重新计算资源hash | admin_id={}, resource_id={}",
+        user.id, resource_id
+    );
+
+    match AdminService::recalculate_resource_hash(&data.pool, &data.storage, resource_id).await {
+        Ok(result) => {
+            log::info!(
+                "[Admin] 资源hash重新计算成功 | admin_id={}, resource_id={}, new_hash={}",
+                user.id,
+                resource_id,
+                &result.new_hash[..16.min(result.new_hash.len())]
+            );
+
+            // 记录审计日志
+            let ip_address = req.peer_addr().map(|addr| addr.ip().to_string());
+            if let Err(e) = AuditLogService::log_action(
+                &data.pool,
+                user.id,
+                "recalculate_resource_hash",
+                Some("resource"),
+                Some(resource_id),
+                Some(serde_json::json!({
+                    "old_hash": result.old_hash,
+                    "new_hash": result.new_hash,
+                    "file_size": result.file_size,
+                })),
+                ip_address.as_deref(),
+            )
+            .await
+            {
+                log::warn!(
+                    "[Audit] 记录重新计算hash日志失败 | admin_id={}, resource_id={}, error={}",
+                    user.id, resource_id, e
+                );
+            }
+
+            HttpResponse::Ok().json(result)
+        }
+        Err(e) => {
+            log::error!(
+                "[Admin] 资源hash重新计算失败 | admin_id={}, resource_id={}, error={}",
+                user.id, resource_id, e
+            );
+            handle_admin_error(e)
+        }
+    }
+}
+
 /// 获取管理员的收藏夹列表
 #[get("/admin/favorites")]
 async fn get_admin_favorites(
@@ -1395,6 +1459,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         // 资料管理
         .service(get_all_resources)
         .service(admin_delete_resource)
+        .service(admin_recalculate_resource_hash)
         .service(get_admin_favorites)
         .service(delete_all_favorite_resources);
 }

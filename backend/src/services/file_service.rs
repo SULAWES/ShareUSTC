@@ -1,6 +1,8 @@
 use crate::models::resource::ResourceType;
 use sha2::{Digest, Sha256};
+use std::io;
 use std::path::Path;
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 #[derive(Debug)]
 pub enum FileError {
@@ -27,6 +29,52 @@ impl FileService {
     pub fn calculate_hash(data: &[u8]) -> String {
         let mut hasher = Sha256::new();
         hasher.update(data);
+        format!("{:x}", hasher.finalize())
+    }
+
+    /// 分块计算文件 SHA-256 哈希（流式，避免内存压力）
+    ///
+    /// # Arguments
+    /// * `reader` - 异步读取器
+    /// * `buffer_size` - 缓冲区大小（默认8KB）
+    ///
+    /// # Returns
+    /// * `Ok(String)` - SHA-256 哈希值（十六进制字符串）
+    /// * `Err(io::Error)` - 读取错误
+    pub async fn calculate_hash_streaming<R>(
+        reader: &mut R,
+        buffer_size: Option<usize>,
+    ) -> Result<String, io::Error>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let mut hasher = Sha256::new();
+        let buffer_size = buffer_size.unwrap_or(8192); // 默认8KB
+        let mut buffer = vec![0u8; buffer_size];
+
+        loop {
+            let n = reader.read(&mut buffer).await?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buffer[..n]);
+        }
+
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
+    /// 从字节切片分块计算 SHA-256 哈希（模拟流式，用于内存中数据）
+    ///
+    /// 将大数据切分成块处理，减少内存峰值
+    #[allow(dead_code)]
+    pub fn calculate_hash_chunked(data: &[u8], chunk_size: Option<usize>) -> String {
+        let mut hasher = Sha256::new();
+        let chunk_size = chunk_size.unwrap_or(64 * 1024); // 默认64KB
+
+        for chunk in data.chunks(chunk_size) {
+            hasher.update(chunk);
+        }
+
         format!("{:x}", hasher.finalize())
     }
 
@@ -124,12 +172,33 @@ impl FileService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::AsyncReadExt;
 
     #[test]
     fn test_calculate_hash() {
         let data = b"hello world";
         let hash = FileService::calculate_hash(data);
         assert_eq!(hash.len(), 64); // SHA-256 hash is 64 hex characters
+    }
+
+    #[tokio::test]
+    async fn test_calculate_hash_streaming() {
+        let data = b"hello world";
+        let mut cursor = std::io::Cursor::new(data);
+        let hash = FileService::calculate_hash_streaming(&mut cursor, Some(4))
+            .await
+            .unwrap();
+        assert_eq!(hash.len(), 64);
+        // 验证与同步方法结果一致
+        assert_eq!(hash, FileService::calculate_hash(data));
+    }
+
+    #[test]
+    fn test_calculate_hash_chunked() {
+        let data: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
+        let hash1 = FileService::calculate_hash(&data);
+        let hash2 = FileService::calculate_hash_chunked(&data, Some(1024));
+        assert_eq!(hash1, hash2);
     }
 
     #[test]

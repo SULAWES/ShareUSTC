@@ -1471,6 +1471,129 @@ impl AdminService {
             favorite_name,
         })
     }
+
+    /// 重新计算资源的文件哈希
+    ///
+    /// # 参数
+    /// * `pool` - 数据库连接池
+    /// * `storage` - 存储后端
+    /// * `resource_id` - 资源ID
+    ///
+    /// # 返回
+    /// * `Ok(RecalculateHashResult)` - 计算结果，包含新旧hash值
+    /// * `Err(AdminError)` - 错误信息
+    pub async fn recalculate_resource_hash(
+        pool: &PgPool,
+        storage: &Arc<dyn crate::services::StorageBackend>,
+        resource_id: Uuid,
+    ) -> Result<RecalculateHashResult, AdminError> {
+        use crate::services::{FileService, StorageBackendType};
+        use crate::config::Config;
+
+        // 获取资源信息
+        let resource: crate::models::Resource = sqlx::query_as(
+            "SELECT * FROM resources WHERE id = $1"
+        )
+        .bind(resource_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| AdminError::DatabaseError(e.to_string()))?
+        .ok_or_else(|| AdminError::NotFound(format!("资源 {} 不存在", resource_id)))?;
+
+        let old_hash = resource.file_hash.clone();
+        let file_path = resource.file_path.clone();
+        let is_oss = resource.storage_type.as_deref() == Some("oss");
+
+        log::info!(
+            "[AdminService] 开始重新计算资源hash | resource_id={}, storage_type={}",
+            resource_id,
+            if is_oss { "oss" } else { "local" }
+        );
+
+        // 根据存储类型选择正确的存储后端
+        let storage_to_use: Arc<dyn crate::services::StorageBackend> = if is_oss {
+            if storage.backend_type() == StorageBackendType::Oss {
+                storage.clone()
+            } else {
+                // 当前是 local 模式，但需要读取 OSS 文件
+                let config = Config::from_env();
+                match crate::services::create_storage_backend(&config) {
+                    Ok(oss_storage) if oss_storage.backend_type() == StorageBackendType::Oss => oss_storage,
+                    _ => return Err(AdminError::ValidationError("无法访问 OSS 存储".to_string())),
+                }
+            }
+        } else {
+            if storage.backend_type() == StorageBackendType::Local {
+                storage.clone()
+            } else {
+                // 当前是 OSS 模式，但需要读取本地文件
+                let config = Config::from_env();
+                match crate::services::create_local_storage(&config) {
+                    Ok(local_storage) => local_storage,
+                    Err(e) => return Err(AdminError::ValidationError(format!("无法访问本地存储: {}", e))),
+                }
+            }
+        };
+
+        // 读取文件内容
+        let file_data = match storage_to_use.read_file(&file_path).await {
+            Ok(data) => data,
+            Err(e) => {
+                log::error!(
+                    "[AdminService] 读取文件失败 | resource_id={}, path={}, error={}",
+                    resource_id, file_path, e
+                );
+                return Err(AdminError::DatabaseError(format!("读取文件失败: {}", e)));
+            }
+        };
+
+        // 计算新hash
+        let new_hash = FileService::calculate_hash(&file_data);
+        let new_size = file_data.len() as i64;
+
+        // 更新数据库
+        let updated = sqlx::query(
+            "UPDATE resources SET file_hash = $1, file_size = $2 WHERE id = $3"
+        )
+        .bind(&new_hash)
+        .bind(new_size)
+        .bind(resource_id)
+        .execute(pool)
+        .await
+        .map_err(|e| AdminError::DatabaseError(e.to_string()))?;
+
+        if updated.rows_affected() == 0 {
+            return Err(AdminError::DatabaseError("更新hash失败，资源可能已被删除".to_string()));
+        }
+
+        log::info!(
+            "[AdminService] 资源hash重新计算完成 | resource_id={}, old_hash={:?}, new_hash={}",
+            resource_id,
+            old_hash.as_ref().map(|h| &h[..16.min(h.len())]),
+            &new_hash[..16.min(new_hash.len())]
+        );
+
+        Ok(RecalculateHashResult {
+            resource_id: resource_id.to_string(),
+            old_hash,
+            new_hash,
+            file_size: new_size,
+            success: true,
+            message: "Hash重新计算成功".to_string(),
+        })
+    }
+}
+
+/// Hash重新计算结果
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecalculateHashResult {
+    pub resource_id: String,
+    pub old_hash: Option<String>,
+    pub new_hash: String,
+    pub file_size: i64,
+    pub success: bool,
+    pub message: String,
 }
 
 /// 通知目标枚举

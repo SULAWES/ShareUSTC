@@ -1,6 +1,7 @@
 use crate::models::{resource::*, CurrentUser};
 use sqlx::{PgPool, Row};
 use std::sync::Arc;
+use tokio::time::Duration;
 use uuid::Uuid;
 
 use super::{AiService, FileService};
@@ -290,6 +291,41 @@ impl ResourceService {
                 resource_id,
                 related_resource_ids.len()
             );
+        }
+
+        // 从 OSS 下载文件并计算哈希（带重试机制）
+        let file_hash = Self::compute_hash_from_storage_with_retry(storage, oss_key, resource_id).await;
+        match file_hash {
+            Ok(hash) => {
+                // 更新数据库中的 file_hash
+                if let Err(e) = sqlx::query(
+                    "UPDATE resources SET file_hash = $1 WHERE id = $2"
+                )
+                .bind(&hash)
+                .bind(resource_id)
+                .execute(&mut *tx)
+                .await
+                {
+                    log::warn!(
+                        "[Resource] OSS 回调更新文件哈希失败 | resource_id={}, error={}",
+                        resource_id, e
+                    );
+                    // 哈希更新失败不影响主流程，继续提交事务
+                } else {
+                    log::info!(
+                        "[Resource] OSS 回调文件哈希计算成功 | resource_id={}, hash={}",
+                        resource_id,
+                        &hash[..16.min(hash.len())]
+                    );
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[Resource] OSS 回调计算文件哈希失败 | resource_id={}, error={}",
+                    resource_id, e
+                );
+                // 哈希计算失败不影响主流程，后续定时任务会重新计算
+            }
         }
 
         if let Err(e) = tx.commit().await {
@@ -1458,15 +1494,21 @@ impl ResourceService {
                 .await
                 .map_err(|e| ResourceError::AiError(e.to_string()))?;
 
+        // 保存旧的hash用于乐观锁检查
+        let old_hash = resource.file_hash.clone();
+
         // 根据资源实际的存储类型选择正确的存储后端写入文件
         let is_oss = resource.storage_type.as_deref() == Some("oss");
+        let content_bytes = content.as_bytes();
+        let expected_hash = FileService::calculate_hash(content_bytes);
+
         if is_oss {
             // OSS 存储
             if storage.backend_type() == super::StorageBackendType::Oss {
                 storage
                     .write_file(
                         &resource.file_path,
-                        content.as_bytes().to_vec(),
+                        content_bytes.to_vec(),
                         Some("text/markdown"),
                     )
                     .await?;
@@ -1478,12 +1520,40 @@ impl ResourceService {
                         oss_storage
                             .write_file(
                                 &resource.file_path,
-                                content.as_bytes().to_vec(),
+                                content_bytes.to_vec(),
                                 Some("text/markdown"),
                             )
                             .await?;
                     }
                     _ => return Err(ResourceError::FileError("无法写入 OSS 资源".to_string())),
+                }
+            }
+
+            // OSS写入后验证：读取文件并验证内容一致性（处理最终一致性）
+            // 最多重试5次，使用指数退避
+            let verification_result = Self::verify_oss_write_with_retry(
+                storage,
+                &resource.file_path,
+                content_bytes,
+                resource_id,
+            ).await;
+
+            match verification_result {
+                Ok(verified_hash) => {
+                    log::info!(
+                        "[Resource] OSS 写入验证成功 | resource_id={}, hash={}",
+                        resource_id,
+                        &verified_hash[..16.min(verified_hash.len())]
+                    );
+                }
+                Err(e) => {
+                    log::error!(
+                        "[Resource] OSS 写入验证失败，内容可能不一致 | resource_id={}, error={}",
+                        resource_id, e
+                    );
+                    return Err(ResourceError::FileError(format!(
+                        "文件写入验证失败: {}", e
+                    )));
                 }
             }
         } else {
@@ -1492,7 +1562,7 @@ impl ResourceService {
                 storage
                     .write_file(
                         &resource.file_path,
-                        content.as_bytes().to_vec(),
+                        content_bytes.to_vec(),
                         Some("text/markdown"),
                     )
                     .await?;
@@ -1504,7 +1574,7 @@ impl ResourceService {
                         local_storage
                             .write_file(
                                 &resource.file_path,
-                                content.as_bytes().to_vec(),
+                                content_bytes.to_vec(),
                                 Some("text/markdown"),
                             )
                             .await?;
@@ -1514,9 +1584,17 @@ impl ResourceService {
             }
         }
 
-        // 计算新的文件哈希和大小（使用字节长度而非字符长度）
-        let file_hash = crate::services::FileService::calculate_hash(content.as_bytes());
-        let file_size = content.as_bytes().len() as i64;
+        // 计算新的文件哈希和大小
+        // 对于 OSS 存储，使用验证步骤计算的hash（如果验证成功）
+        // 对于本地存储，直接使用内存中的 content 计算（更高效）
+        let file_hash = if is_oss {
+            // OSS存储：直接使用预期hash（已通过验证确认写入正确）
+            expected_hash
+        } else {
+            // 本地存储：直接使用内存中的 content 计算
+            FileService::calculate_hash(content_bytes)
+        };
+        let file_size = content_bytes.len() as i64;
 
         // 确定审核状态
         let audit_status = if ai_result.passed {
@@ -1526,7 +1604,8 @@ impl ResourceService {
         };
 
         // 更新数据库中的 updated_at、file_hash、file_size、audit_status、content_accuracy
-        let updated_at = sqlx::query_scalar::<_, chrono::NaiveDateTime>(
+        // 使用乐观锁：只有当file_hash等于old_hash时才更新（防止并发修改）
+        let update_result = sqlx::query_scalar::<_, chrono::NaiveDateTime>(
             r#"
             UPDATE resources
             SET
@@ -1536,11 +1615,11 @@ impl ResourceService {
                 audit_status = $3,
                 content_accuracy = $4,
                 ai_reject_reason = $5
-            WHERE id = $6
+            WHERE id = $6 AND (file_hash = $7 OR file_hash IS NULL)
             RETURNING updated_at
             "#,
         )
-        .bind(file_hash)
+        .bind(&file_hash)
         .bind(file_size)
         .bind(audit_status.to_string())
         .bind(ai_result.accuracy_score)
@@ -1550,14 +1629,27 @@ impl ResourceService {
             ai_result.reason
         })
         .bind(resource_id)
-        .fetch_one(pool)
+        .bind(old_hash)
+        .fetch_optional(pool)
         .await
         .map_err(|e| ResourceError::DatabaseError(e.to_string()))?;
 
-        Ok(crate::models::UpdateResourceContentResponse {
-            id: resource_id,
-            updated_at,
-        })
+        match update_result {
+            Some(updated_at) => Ok(crate::models::UpdateResourceContentResponse {
+                id: resource_id,
+                updated_at,
+            }),
+            None => {
+                // 乐观锁失败：资源在编辑期间被其他进程修改
+                log::warn!(
+                    "[Resource] 乐观锁冲突，资源在编辑期间被修改 | resource_id={}",
+                    resource_id
+                );
+                Err(ResourceError::Conflict(
+                    "资源在您编辑期间已被修改，请刷新后重试".to_string()
+                ))
+            }
+        }
     }
 
     /// 获取资源原始内容（用于编辑）
@@ -1945,5 +2037,118 @@ impl ResourceService {
         );
 
         Ok(())
+    }
+
+    /// 验证 OSS 写入操作（带指数退避重试）
+    ///
+    /// 用于处理 OSS 最终一致性问题，确保写入的内容可以被正确读取
+    /// 返回读取到的文件hash（如果验证成功）
+    async fn verify_oss_write_with_retry(
+        storage: &Arc<dyn super::StorageBackend>,
+        file_path: &str,
+        expected_content: &[u8],
+        resource_id: Uuid,
+    ) -> Result<String, String> {
+        const MAX_RETRIES: u32 = 5;
+        const INITIAL_DELAY_MS: u64 = 200;
+        const MAX_DELAY_MS: u64 = 5000;
+
+        let expected_hash = FileService::calculate_hash(expected_content);
+        let expected_size = expected_content.len();
+
+        for attempt in 0..MAX_RETRIES {
+            if attempt > 0 {
+                // 指数退避
+                let delay_ms = std::cmp::min(
+                    INITIAL_DELAY_MS * (1_u64 << attempt.saturating_sub(1)),
+                    MAX_DELAY_MS,
+                );
+                log::info!(
+                    "[Resource] OSS 写入验证重试 | resource_id={}, attempt={}/{}, delay={}ms",
+                    resource_id, attempt + 1, MAX_RETRIES, delay_ms
+                );
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            }
+
+            match storage.read_file(file_path).await {
+                Ok(data) => {
+                    // 验证文件大小
+                    if data.len() != expected_size {
+                        log::warn!(
+                            "[Resource] OSS 写入验证失败：大小不一致 | resource_id={}, expected={}, got={}",
+                            resource_id, expected_size, data.len()
+                        );
+                        continue;
+                    }
+
+                    // 验证文件内容hash
+                    let actual_hash = FileService::calculate_hash(&data);
+                    if actual_hash == expected_hash {
+                        log::info!(
+                            "[Resource] OSS 写入验证通过 | resource_id={}, attempt={}",
+                            resource_id, attempt + 1
+                        );
+                        return Ok(actual_hash);
+                    } else {
+                        log::warn!(
+                            "[Resource] OSS 写入验证失败：hash不一致 | resource_id={}, attempt={}",
+                            resource_id, attempt + 1
+                        );
+                        // hash不一致，继续重试（可能是读取到旧版本）
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[Resource] OSS 写入验证读取失败 | resource_id={}, attempt={}/{}, error={}",
+                        resource_id, attempt + 1, MAX_RETRIES, e
+                    );
+                }
+            }
+        }
+
+        Err(format!(
+            "OSS 写入验证失败：重试 {} 次后仍无法确认写入一致性",
+            MAX_RETRIES
+        ))
+    }
+
+    /// 从存储后端读取文件并计算哈希（带重试机制）
+    ///
+    /// 用于 OSS 回调上传时计算文件哈希
+    async fn compute_hash_from_storage_with_retry(
+        storage: &Arc<dyn super::StorageBackend>,
+        file_path: &str,
+        resource_id: Uuid,
+    ) -> Result<String, String> {
+        const MAX_RETRIES: u32 = 3;
+        const RETRY_DELAY_MS: u64 = 500;
+
+        let mut last_error = String::new();
+
+        for attempt in 0..MAX_RETRIES {
+            if attempt > 0 {
+                log::info!(
+                    "[Resource] 重试计算文件哈希 | resource_id={}, attempt={}/{}",
+                    resource_id, attempt + 1, MAX_RETRIES
+                );
+                tokio::time::sleep(Duration::from_millis(RETRY_DELAY_MS * attempt as u64)).await;
+            }
+
+            match storage.read_file(file_path).await {
+                Ok(data) => {
+                    let hash = FileService::calculate_hash(&data);
+                    return Ok(hash);
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[Resource] 读取文件计算哈希失败 | resource_id={}, path={}, attempt={}/{}, error={}",
+                        resource_id, file_path, attempt + 1, MAX_RETRIES, e
+                    );
+                    last_error = e.to_string();
+                }
+            }
+        }
+
+        Err(format!("重试 {} 次后仍然失败: {}", MAX_RETRIES, last_error))
     }
 }

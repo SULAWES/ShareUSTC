@@ -169,8 +169,17 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
+            <el-button
+              type="primary"
+              size="small"
+              :loading="recalculatingId === row.id"
+              @click="handleRecalculateHash(row)"
+            >
+              <el-icon><Refresh /></el-icon>
+              重算Hash
+            </el-button>
             <el-button
               type="danger"
               size="small"
@@ -215,6 +224,7 @@ import { useAuthStore } from '../../stores/auth';
 import {
   getAllResources,
   adminDeleteResource,
+  recalculateResourceHash,
   getAdminFavorites,
   deleteAllFavoriteResources,
   type AdminResource,
@@ -233,6 +243,7 @@ const page = ref(1);
 const perPage = ref(20);
 const total = ref(0);
 const searchKeyword = ref('');
+const recalculatingId = ref<string | null>(null); // 正在重新计算hash的资源ID
 
 // 收藏夹数据
 const favorites = ref<AdminFavorite[]>([]);
@@ -345,6 +356,45 @@ const handleDeleteFavoriteResources = async (favorite: AdminFavorite) => {
 // 查看资源详情
 const viewResource = (resourceId: string) => {
   window.open(`/resources/${resourceId}`, '_blank');
+};
+
+// 重新计算资源hash
+const handleRecalculateHash = async (resource: AdminResource) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要重新计算资源 "${resource.title}" 的哈希值吗？\n\n此操作会重新读取文件内容并计算SHA-256哈希值。`,
+      '确认重新计算Hash',
+      {
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        type: 'info'
+      }
+    );
+
+    recalculatingId.value = resource.id;
+    const result = await recalculateResourceHash(resource.id);
+
+    // 显示详细结果
+    const oldHashDisplay = result.oldHash
+      ? `${result.oldHash.substring(0, 16)}...`
+      : '无';
+    const newHashDisplay = `${result.newHash.substring(0, 16)}...`;
+
+    ElMessage.success({
+      message: `Hash重新计算成功！\n原Hash: ${oldHashDisplay}\n新Hash: ${newHashDisplay}`,
+      duration: 5000,
+      showClose: true
+    });
+
+    // 刷新列表以更新显示
+    fetchResources();
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.message || '重新计算Hash失败');
+    }
+  } finally {
+    recalculatingId.value = null;
+  }
 };
 
 // 格式化日期
@@ -516,6 +566,18 @@ onMounted(() => {
 .resource-title {
   .el-link {
     font-weight: 500;
+  }
+}
+
+// 操作列按钮样式
+:deep(.el-table__row) {
+  .el-button {
+    margin-left: 0;
+    margin-right: 8px;
+
+    &:last-child {
+      margin-right: 0;
+    }
   }
 }
 

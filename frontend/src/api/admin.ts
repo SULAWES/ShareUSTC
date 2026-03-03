@@ -457,6 +457,23 @@ export const adminDeleteResource = (resourceId: string): Promise<void> => {
   return request.delete(`/admin/resources/${resourceId}`);
 };
 
+// 重新计算资源hash
+export interface RecalculateHashResult {
+  resourceId: string;
+  oldHash: string | null;
+  newHash: string;
+  fileSize: number;
+  success: boolean;
+  message: string;
+}
+
+export const recalculateResourceHash = (resourceId: string): Promise<RecalculateHashResult> => {
+  // 设置1分钟超时，因为大文件在OSS上计算hash需要较长时间
+  return request.post(`/admin/resources/${resourceId}/recalculate-hash`, {}, {
+    timeout: 60000
+  });
+};
+
 export const getAdminFavorites = (): Promise<AdminFavoriteListResponse> => {
   return request.get('/admin/favorites');
 };
@@ -501,6 +518,7 @@ export const adminApi = {
   // 资料管理
   getAllResources,
   adminDeleteResource,
+  recalculateResourceHash,
   getAdminFavorites,
   deleteAllFavoriteResources
 };
