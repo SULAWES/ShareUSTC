@@ -149,14 +149,65 @@ impl LocalStorage {
             return Err(StorageError::Validation("文件 key 不能为空".to_string()));
         }
 
+        // 拒绝包含路径遍历字符的 key
+        if key_or_path.contains("..") || key_or_path.contains("//") {
+            return Err(StorageError::Validation(
+                "文件 key 包含非法字符".to_string(),
+            ));
+        }
+
         let path = Path::new(key_or_path);
 
+        // 如果传入的是绝对路径或已包含 base_path，直接使用
         if path.is_absolute() || path.starts_with(&self.base_path) {
-            return Ok(path.to_path_buf());
+            // 使用 canonicalize 确保路径在允许的范围内
+            let canonical_path = path.canonicalize().map_err(|e| {
+                StorageError::Validation(format!("无法解析文件路径: {}", e))
+            })?;
+
+            // 确保最终路径在基础目录内，防止路径遍历攻击
+            if !canonical_path.starts_with(&self.base_path) {
+                return Err(StorageError::Validation(
+                    "文件路径超出允许的范围".to_string(),
+                ));
+            }
+
+            return Ok(canonical_path);
         }
 
         let key = key_or_path.trim_start_matches('/');
-        Ok(self.base_path.join(key))
+        let full_path = self.base_path.join(key);
+
+        // 再次检查拼接后的路径是否在基础目录内
+        // 使用 canonicalize 解析任何可能的符号链接或相对路径
+        match full_path.canonicalize() {
+            Ok(canonical) => {
+                if !canonical.starts_with(&self.base_path) {
+                    return Err(StorageError::Validation(
+                        "文件路径超出允许的范围".to_string(),
+                    ));
+                }
+                Ok(canonical)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // 文件不存在时无法 canonicalize，手动检查路径
+                // 使用绝对路径并确保没有跳出 base_path
+                let normalized = self.base_path.canonicalize().map_err(|e| {
+                    StorageError::Config(format!("无法解析基础目录: {}", e))
+                })?;
+                let target = normalized.join(key);
+
+                // 检查规范化后的路径是否以基础目录开头
+                if !target.starts_with(&normalized) {
+                    return Err(StorageError::Validation(
+                        "文件路径超出允许的范围".to_string(),
+                    ));
+                }
+
+                Ok(target)
+            }
+            Err(e) => Err(StorageError::Io(format!("解析文件路径失败: {}", e))),
+        }
     }
 
     fn relative_key(&self, key_or_path: &str) -> String {

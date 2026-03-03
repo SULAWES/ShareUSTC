@@ -171,6 +171,23 @@ impl ImageService {
             return Err(ImageError::ValidationError("无法识别文件类型".to_string()));
         }
 
+        // MIME 类型与扩展名一致性校验
+        // 防止通过修改扩展名伪装文件类型
+        if let (Some(mime), Some(ext)) = (detected_mime, file_extension.as_deref()) {
+            let is_consistent = match ext {
+                "jpg" | "jpeg" => mime == "image/jpeg",
+                "png" => mime == "image/png",
+                _ => true, // 未知扩展名时不进行一致性校验
+            };
+
+            if !is_consistent {
+                return Err(ImageError::ValidationError(format!(
+                    "文件类型与扩展名不一致: 扩展名为 .{}, 但 MIME 类型为 {}",
+                    ext, mime
+                )));
+            }
+        }
+
         const MAX_FILE_SIZE: usize = 5 * 1024 * 1024;
         if file_data.len() > MAX_FILE_SIZE {
             return Err(ImageError::ValidationError(format!(

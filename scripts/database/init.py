@@ -906,6 +906,9 @@ CREATE INDEX IF NOT EXISTS idx_resource_courses_course ON resource_courses(cours
 CREATE INDEX IF NOT EXISTS idx_resource_relations_source ON resource_relations(source_resource_id);
 CREATE INDEX IF NOT EXISTS idx_resource_relations_target ON resource_relations(target_resource_id);
 
+-- 资源统计表索引
+CREATE INDEX IF NOT EXISTS idx_resource_stats_resource ON resource_stats(resource_id);
+
 -- ============================================
 -- 创建触发器
 -- ============================================

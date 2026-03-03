@@ -1,4 +1,4 @@
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::models::{
@@ -21,6 +21,9 @@ impl RatingService {
             return Err(sqlx::Error::Protocol(msg.into()));
         }
 
+        // 开启事务
+        let mut tx = pool.begin().await?;
+
         // 插入或更新评分
         let rating = sqlx::query_as::<_, Rating>(
             r#"
@@ -37,7 +40,8 @@ impl RatingService {
                 format_quality = EXCLUDED.format_quality,
                 detail_level = EXCLUDED.detail_level,
                 updated_at = CURRENT_TIMESTAMP
-            RETURNING *
+            RETURNING id, resource_id, user_id, difficulty, overall_quality,
+                      answer_quality, format_quality, detail_level, created_at, updated_at
             "#,
         )
         .bind(resource_id)
@@ -47,13 +51,16 @@ impl RatingService {
         .bind(request.answer_quality)
         .bind(request.format_quality)
         .bind(request.detail_level)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
 
-        // 更新资源统计
-        Self::update_resource_stats(pool, resource_id).await?;
+        // 更新资源统计（在事务中）
+        Self::update_resource_stats_in_tx(&mut tx, resource_id).await?;
 
-        // 发送通知给资源上传者（如果不是评分自己的资源）
+        // 提交事务
+        tx.commit().await?;
+
+        // 发送通知给资源上传者（如果不是评分自己的资源）- 在事务外执行
         Self::notify_uploader_on_rating(pool, resource_id, user_id).await;
 
         Ok(rating.into())
@@ -61,23 +68,21 @@ impl RatingService {
 
     /// 评分时通知资源上传者
     async fn notify_uploader_on_rating(pool: &PgPool, resource_id: Uuid, rater_id: Uuid) {
-        // 获取资源上传者信息和评分者用户名
-        let resource_result = sqlx::query_as::<_, (Uuid, String, Option<Uuid>)>(
-            "SELECT uploader_id, title, author_id FROM resources WHERE id = $1",
+        // 使用单个JOIN查询获取资源信息和评分者用户名（避免N+1查询）
+        let result = sqlx::query_as::<_, (Uuid, String, Option<Uuid>, String)>(
+            r#"
+            SELECT r.uploader_id, r.title, r.author_id, u.username
+            FROM resources r
+            LEFT JOIN users u ON u.id = $2
+            WHERE r.id = $1
+            "#,
         )
         .bind(resource_id)
+        .bind(rater_id)
         .fetch_optional(pool)
         .await;
 
-        let rater_result =
-            sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = $1")
-                .bind(rater_id)
-                .fetch_optional(pool)
-                .await;
-
-        if let (Ok(Some((uploader_id, resource_title, author_id))), Ok(Some(rater_name))) =
-            (resource_result, rater_result)
-        {
+        if let Ok(Some((uploader_id, resource_title, author_id, rater_name))) = result {
             // 优先通知作者（如果存在），否则通知上传者
             let notify_user_id = author_id.unwrap_or(uploader_id);
 
@@ -105,7 +110,11 @@ impl RatingService {
         user_id: Uuid,
     ) -> Result<Option<RatingResponse>, sqlx::Error> {
         let rating = sqlx::query_as::<_, Rating>(
-            "SELECT * FROM ratings WHERE resource_id = $1 AND user_id = $2",
+            r#"
+            SELECT id, resource_id, user_id, difficulty, overall_quality,
+                   answer_quality, format_quality, detail_level, created_at, updated_at
+            FROM ratings WHERE resource_id = $1 AND user_id = $2
+            "#,
         )
         .bind(resource_id)
         .bind(user_id)
@@ -121,14 +130,21 @@ impl RatingService {
         resource_id: Uuid,
         user_id: Uuid,
     ) -> Result<(), sqlx::Error> {
+        // 开启事务
+        let mut tx = pool.begin().await?;
+
+        // 删除评分
         sqlx::query("DELETE FROM ratings WHERE resource_id = $1 AND user_id = $2")
             .bind(resource_id)
             .bind(user_id)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
 
-        // 更新资源统计
-        Self::update_resource_stats(pool, resource_id).await?;
+        // 更新资源统计（在事务中）
+        Self::update_resource_stats_in_tx(&mut tx, resource_id).await?;
+
+        // 提交事务
+        tx.commit().await?;
 
         Ok(())
     }
@@ -220,8 +236,11 @@ impl RatingService {
         })
     }
 
-    /// 更新资源统计表中的评分数据
-    async fn update_resource_stats(pool: &PgPool, resource_id: Uuid) -> Result<(), sqlx::Error> {
+    /// 更新资源统计表中的评分数据（在事务中）
+    async fn update_resource_stats_in_tx(
+        tx: &mut Transaction<'_, Postgres>,
+        resource_id: Uuid,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"
             INSERT INTO resource_stats (
@@ -261,9 +280,17 @@ impl RatingService {
             "#,
         )
         .bind(resource_id)
-        .execute(pool)
+        .execute(&mut **tx)
         .await?;
 
         Ok(())
+    }
+
+    /// 更新资源统计表中的评分数据（独立操作，用于非事务场景）
+    #[allow(dead_code)]
+    async fn update_resource_stats(pool: &PgPool, resource_id: Uuid) -> Result<(), sqlx::Error> {
+        let mut tx = pool.begin().await?;
+        Self::update_resource_stats_in_tx(&mut tx, resource_id).await?;
+        tx.commit().await
     }
 }

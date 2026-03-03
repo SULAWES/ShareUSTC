@@ -10,15 +10,15 @@ pub struct Rating {
     pub resource_id: Uuid,
     pub user_id: Uuid,
     /// 难度评分 (1-10)
-    pub difficulty: Option<i32>,
+    pub difficulty: i32,
     /// 总体质量评分 (1-10)
-    pub overall_quality: Option<i32>,
+    pub overall_quality: i32,
     /// 参考答案质量 (1-10)
-    pub answer_quality: Option<i32>,
+    pub answer_quality: i32,
     /// 格式质量/排版清晰度 (1-10)
-    pub format_quality: Option<i32>,
+    pub format_quality: i32,
     /// 知识点详细程度 (1-10)
-    pub detail_level: Option<i32>,
+    pub detail_level: i32,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
@@ -86,11 +86,11 @@ impl From<Rating> for RatingResponse {
             id: rating.id,
             resource_id: rating.resource_id,
             user_id: rating.user_id,
-            difficulty: rating.difficulty.unwrap_or(0),
-            overall_quality: rating.overall_quality.unwrap_or(0),
-            answer_quality: rating.answer_quality.unwrap_or(0),
-            format_quality: rating.format_quality.unwrap_or(0),
-            detail_level: rating.detail_level.unwrap_or(0),
+            difficulty: rating.difficulty,
+            overall_quality: rating.overall_quality,
+            answer_quality: rating.answer_quality,
+            format_quality: rating.format_quality,
+            detail_level: rating.detail_level,
             created_at: rating.created_at,
         }
     }

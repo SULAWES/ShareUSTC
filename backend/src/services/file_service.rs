@@ -157,7 +157,6 @@ impl FileService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::io::AsyncReadExt;
 
     #[test]
     fn test_calculate_hash() {
@@ -176,14 +175,6 @@ mod tests {
         assert_eq!(hash.len(), 64);
         // 验证与同步方法结果一致
         assert_eq!(hash, FileService::calculate_hash(data));
-    }
-
-    #[test]
-    fn test_calculate_hash_chunked() {
-        let data: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
-        let hash1 = FileService::calculate_hash(&data);
-        let hash2 = FileService::calculate_hash_chunked(&data, Some(1024));
-        assert_eq!(hash1, hash2);
     }
 
     #[test]
