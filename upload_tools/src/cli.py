@@ -54,9 +54,15 @@ server:
 upload:
   # 最大文件大小（字节），默认 100MB
   max_file_size: 104857600
-  
+
   # 上传缓冲区大小（字节）
   chunk_size: 8192
+
+  # 上传方式: proxy (服务器中转, 默认), direct (OSS直传), auto (自动检测)
+  # proxy: 文件先上传到服务器，再由服务器上传到OSS。兼容性好，适合所有服务器配置
+  # direct: 使用STS临时凭证直传OSS，与网页端一致。上传速度更快，需要服务器启用OSS
+  # auto: 自动检测服务器配置，如果启用OSS则使用直传，否则使用服务器中转
+  upload_mode: proxy
 
 # 输出配置
 output:
@@ -113,53 +119,73 @@ def generate_csv_example(output_path: str = "my_upload.example.csv"):
 @click.option("--resume", is_flag=True, help="从上次中断处继续上传")
 @click.option("--dry-run", is_flag=True, help="模拟运行，验证 CSV 格式和文件路径，不上传实际文件")
 @click.option("--output", "output_path", type=click.Path(), help="报告输出目录（默认当前目录）")
-@click.option("--format", "report_format", type=click.Choice(["csv", "html", "both"]), 
+@click.option("--format", "report_format", type=click.Choice(["csv", "html", "both"]),
               default="csv", help="报告格式")
 @click.option("--verbose", is_flag=True, help="显示详细日志（DEBUG 级别）")
 @click.option("--non-interactive", is_flag=True, help="非交互式模式（模糊匹配时自动跳过，不提示选择）")
+@click.option("--upload-mode", type=click.Choice(["proxy", "direct", "auto"]),
+              default=None, help="上传方式: proxy (服务器中转, 默认), direct (OSS直传), auto (自动检测)")
 @click.version_option(version=VERSION, prog_name="shareustc-upload")
-def main(csv_path, config_path, login, logout, template, resume, dry_run, output_path, 
-         report_format, verbose, non_interactive):
+def main(csv_path, config_path, login, logout, template, resume, dry_run, output_path,
+         report_format, verbose, non_interactive, upload_mode):
     """ShareUSTC 批量上传工具
-    
+
     使用 CSV 文件批量上传学习资料到 ShareUSTC 平台。
-    
+
     准备工作:
-    
+
         \b
         # 1. 生成示例配置文件和 CSV 模板
         shareustc-upload --template
-        
+
         # 2. 复制并修改配置文件
         cp config.example.yaml config.yaml
         # 编辑 config.yaml，设置服务器地址等
-        
+
         # 3. 填写 CSV 文件
         # 编辑 my_upload.example.csv 或创建新的 CSV 文件
-    
+
     基本使用:
-    
+
         \b
         # 测试登录
         shareustc-upload --login
-        
+
         # 上传资源（使用当前目录的 config.yaml）
         shareustc-upload --csv my_upload.csv
-        
+
         # 使用指定配置文件
         shareustc-upload --csv my_upload.csv --config /path/to/config.yaml
-        
+
+        # 使用 OSS 直传方式（如果服务器支持）
+        shareustc-upload --csv my_upload.csv --upload-mode direct
+
+        # 自动检测并使用最优上传方式
+        shareustc-upload --csv my_upload.csv --upload-mode auto
+
         # 断点续传
         shareustc-upload --csv my_upload.csv --resume
-    
+
     配置文件说明:
-    
+
         工具会按以下顺序查找配置文件：
         1. --config 参数指定的文件
         2. 当前目录的 config.yaml
         3. 用户目录的 ~/.shareustc/config.yaml
-        
+
         配置文件中必须设置 server.base_url（服务器地址）
+
+    上传方式说明:
+
+        proxy (默认):  文件先上传到服务器，再由服务器上传到 OSS
+                       兼容性好，适合所有服务器配置
+
+        direct:        使用 STS 临时凭证直传 OSS，与网页端一致
+                       上传速度更快，减少服务器带宽压力
+                       需要服务器启用 OSS 存储
+
+        auto:          自动检测服务器配置，如果启用 OSS 则使用直传，
+                       否则使用服务器中转
     """
     # 打印横幅
     print_banner()
@@ -255,6 +281,9 @@ def main(csv_path, config_path, login, logout, template, resume, dry_run, output
         if verbose:
             config.output.verbose = True
             config.output.log_level = "DEBUG"
+        # 命令行上传方式参数覆盖配置文件
+        if upload_mode:
+            config.upload.upload_mode = upload_mode
     except FileNotFoundError as e:
         print_error(str(e))
         sys.exit(1)
@@ -262,7 +291,7 @@ def main(csv_path, config_path, login, logout, template, resume, dry_run, output
         print_error(f"加载配置失败: {e}")
         print_info("提示: 使用 --template 生成示例配置文件")
         sys.exit(1)
-    
+
     # 设置日志
     logger = setup_logging(
         log_level=config.output.log_level,
@@ -273,6 +302,8 @@ def main(csv_path, config_path, login, logout, template, resume, dry_run, output
     logger.info(f"CSV 文件: {csv_path}")
     logger.info(f"服务器: {config.server.base_url}")
     logger.info(f"配置文件: {config_path or get_default_config_path() or '默认配置'}")
+    if upload_mode:
+        logger.info(f"上传方式: {upload_mode} (从命令行指定)")
     
     # 初始化认证管理器
     auth = AuthManager(
@@ -396,6 +427,7 @@ def main(csv_path, config_path, login, logout, template, resume, dry_run, output
         timeout=config.server.timeout,
         retry_count=config.server.retry_count,
         retry_delay=config.server.retry_delay,
+        upload_mode=config.upload.upload_mode,
     )
     
     # 使用 tqdm 显示进度

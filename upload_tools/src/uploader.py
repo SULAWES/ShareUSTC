@@ -1,6 +1,9 @@
 """上传核心模块
 
 执行实际的文件上传操作，包括重试、断点续传等功能。
+支持两种上传方式：
+1. 服务器中转（proxy）：文件先上传到服务器，再由服务器上传到 OSS
+2. OSS 直传（direct）：使用 STS 临时凭证直传 OSS，与网页端一致
 """
 
 import json
@@ -9,7 +12,7 @@ import time
 import os
 import socket
 from pathlib import Path
-from typing import List, Dict, Optional, Any, Callable
+from typing import List, Dict, Optional, Any, Callable, Literal
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
@@ -21,6 +24,9 @@ from csv_parser import UploadTask
 from utils import format_file_size, get_timestamp
 
 logger = logging.getLogger("shareustc_upload")
+
+# 上传方式类型
+UploadMode = Literal["proxy", "direct", "auto"]
 
 
 @dataclass
@@ -88,7 +94,14 @@ class ProgressFileWrapper:
 
 
 class BatchUploader:
-    """批量上传器"""
+    """批量上传器
+
+    支持两种上传方式：
+    1. 服务器中转（proxy）：传统的 multipart/form-data 上传
+    2. OSS 直传（direct）：使用 STS 临时凭证直传 OSS
+
+    当 upload_mode 为 "auto" 时，会自动检测服务器配置并选择最优方式。
+    """
 
     # 大文件阈值：10MB 以上使用流式上传并显示进度
     LARGE_FILE_THRESHOLD = 10 * 1024 * 1024
@@ -104,7 +117,7 @@ class BatchUploader:
 
     # 大文件上传的最大超时时间（秒）
     MAX_LARGE_FILE_TIMEOUT = 3600  # 1 小时
-    
+
     def __init__(
         self,
         base_url: str,
@@ -112,45 +125,106 @@ class BatchUploader:
         timeout: int = 300,
         retry_count: int = 3,
         retry_delay: int = 2,
+        upload_mode: UploadMode = "proxy",
     ):
         """初始化批量上传器
-        
+
         Args:
             base_url: API 基础 URL
             session: HTTP Session（已包含认证 Cookie）
             timeout: 上传超时时间（秒）
             retry_count: 失败重试次数
             retry_delay: 重试间隔（秒）
+            upload_mode: 上传方式（proxy/direct/auto，默认 proxy）
         """
         self.base_url = base_url.rstrip("/")
         self.session = session
         self.timeout = timeout
         self.retry_count = retry_count
         self.retry_delay = retry_delay
-        
+        self.upload_mode = upload_mode
+
+        # OSS 直传上传器（延迟初始化）
+        self._oss_uploader = None
+
         logger.debug("BatchUploader 初始化:")
         logger.debug(f"  timeout: {timeout}")
         logger.debug(f"  retry_count: {retry_count}")
         logger.debug(f"  retry_delay: {retry_delay}")
-    
+        logger.debug(f"  upload_mode: {upload_mode}")
+
+    def _get_oss_uploader(self):
+        """获取 OSS 直传上传器（延迟初始化）
+
+        Returns:
+            OssDirectUploader 实例
+        """
+        if self._oss_uploader is None:
+            from oss_uploader import OssDirectUploader
+            self._oss_uploader = OssDirectUploader(
+                base_url=self.base_url,
+                session=self.session,
+                timeout=self.timeout,
+                retry_count=self.retry_count,
+                retry_delay=self.retry_delay,
+            )
+        return self._oss_uploader
+
+    def _check_oss_enabled(self) -> bool:
+        """检查服务器是否启用 OSS
+
+        Returns:
+            True 如果服务器使用 OSS 存储
+        """
+        try:
+            response = self.session.get(
+                f"{self.base_url}/api/oss/status",
+                timeout=(5, 10),
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("storageBackend") == "oss"
+        except Exception as e:
+            logger.debug(f"检查 OSS 状态失败: {e}")
+        return False
+
+    def _should_use_direct_upload(self) -> bool:
+        """判断是否应使用 OSS 直传
+
+        Returns:
+            True 如果使用直传方式
+        """
+        if self.upload_mode == "direct":
+            return True
+        elif self.upload_mode == "proxy":
+            return False
+        elif self.upload_mode == "auto":
+            return self._check_oss_enabled()
+        return False
+
     def upload(
         self,
         tasks: List[UploadTask],
         progress_callback=None,
     ) -> List[UploadResult]:
         """批量上传
-        
+
         Args:
             tasks: 上传任务列表
             progress_callback: 进度回调函数 (current, total, task)
-            
+
         Returns:
             上传结果列表
         """
         total = len(tasks)
         results = []
-        
+
+        # 确定实际使用的上传方式
+        use_direct = self._should_use_direct_upload()
+        actual_mode = "OSS直传" if use_direct else "服务器中转"
+
         logger.info(f"开始批量上传，共 {total} 个任务")
+        logger.info(f"上传方式: {actual_mode} (mode={self.upload_mode})")
         
         for i, task in enumerate(tasks, 1):
             file_size = task.file_path.stat().st_size
@@ -188,11 +262,14 @@ class BatchUploader:
         
         return results
     
-    def upload_single(self, task: UploadTask) -> UploadResult:
+    def upload_single(self, task: UploadTask, progress_bar: Optional[tqdm] = None) -> UploadResult:
         """上传单个文件
+
+        根据配置的上传方式，选择服务器中转或 OSS 直传。
 
         Args:
             task: 上传任务
+            progress_bar: 可选的 tqdm 进度条对象（用于 OSS 直传）
 
         Returns:
             上传结果
@@ -216,7 +293,42 @@ class BatchUploader:
                 error=f"路径不是文件或无法访问: {task.file_path}",
                 duration=time.time() - start_time,
             )
-        
+
+        # 根据配置选择上传方式
+        use_direct = self._should_use_direct_upload()
+
+        if use_direct:
+            # 使用 OSS 直传
+            try:
+                oss_uploader = self._get_oss_uploader()
+                return oss_uploader.upload_single(task, progress_bar)
+            except Exception as e:
+                logger.error(f"OSS 直传失败: {e}")
+                # OSS 直传失败时，如果 mode 是 auto，回退到服务器中转
+                if self.upload_mode == "auto":
+                    logger.info("回退到服务器中转上传...")
+                    return self._proxy_upload(task, start_time)
+                else:
+                    return UploadResult(
+                        success=False,
+                        task=task,
+                        error=f"OSS 直传失败: {str(e)}",
+                        duration=time.time() - start_time,
+                    )
+        else:
+            # 使用服务器中转
+            return self._proxy_upload(task, start_time)
+
+    def _proxy_upload(self, task: UploadTask, start_time: float) -> UploadResult:
+        """使用服务器中转方式上传
+
+        Args:
+            task: 上传任务
+            start_time: 开始时间戳
+
+        Returns:
+            上传结果
+        """
         # 构建元数据
         metadata = {
             "title": task.title,
@@ -228,22 +340,22 @@ class BatchUploader:
             "teacherSns": task.matched_teacher_sns,
             "courseSns": task.matched_course_sns,
         }
-        
+
         logger.debug("上传元数据:")
         for key, value in metadata.items():
             logger.debug(f"  {key}: {value}")
-        
+
         # 执行上传（带重试）
         for attempt in range(self.retry_count + 1):
             if attempt > 0:
                 logger.info(f"第 {attempt}/{self.retry_count} 次重试...")
                 time.sleep(self.retry_delay * attempt)  # 指数退避
-            
+
             try:
                 result = self._do_upload(task, metadata, start_time)
                 if result.success:
                     return result
-                    
+
             except requests.exceptions.Timeout as e:
                 logger.warning(f"上传超时: {e}")
                 if attempt == self.retry_count:
@@ -253,7 +365,7 @@ class BatchUploader:
                         error=f"上传超时（{self.timeout}秒），已重试 {self.retry_count} 次。建议：1) 检查网络连接 2) 对于大文件请确保网络稳定 3) 可尝试增加超时时间",
                         duration=time.time() - start_time,
                     )
-                    
+
             except requests.exceptions.ConnectionError as e:
                 logger.warning(f"连接错误: {e}")
                 if attempt == self.retry_count:
@@ -263,7 +375,7 @@ class BatchUploader:
                         error=f"连接失败，已重试 {self.retry_count} 次: {e}",
                         duration=time.time() - start_time,
                     )
-                    
+
             except Exception as e:
                 logger.error(f"上传时发生错误: {e}")
                 if attempt == self.retry_count:
@@ -273,7 +385,7 @@ class BatchUploader:
                         error=f"上传失败: {str(e)}",
                         duration=time.time() - start_time,
                     )
-        
+
         # 所有重试都失败
         return UploadResult(
             success=False,
@@ -634,20 +746,25 @@ def resume_upload(
     uploader: BatchUploader,
 ) -> List[UploadResult]:
     """从检查点恢复上传
-    
+
     Args:
         checkpoint: 检查点
         all_tasks: 所有任务
         uploader: 上传器
-        
+
     Returns:
         上传结果列表（包含已完成的）
     """
     total = len(all_tasks)
     results = []
-    
+
+    # 确定实际使用的上传方式
+    use_direct = uploader._should_use_direct_upload()
+    actual_mode = "OSS直传" if use_direct else "服务器中转"
+
     logger.info(f"恢复上传，总计 {total} 个任务，已完成 {len(checkpoint.completed_indices)} 个")
-    
+    logger.info(f"上传方式: {actual_mode}")
+
     for i, task in enumerate(all_tasks):
         if checkpoint.is_completed(i):
             # 已完成，创建成功结果
@@ -662,13 +779,13 @@ def resume_upload(
             # 需要上传
             result = uploader.upload_single(task)
             results.append(result)
-            
+
             # 更新检查点
             if result.success:
                 checkpoint.mark_completed(i)
             else:
                 checkpoint.mark_failed(i, task, result.error or "未知错误")
-            
+
             checkpoint.save(checkpoint.csv_path or "")
-    
+
     return results

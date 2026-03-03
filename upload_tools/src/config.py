@@ -31,6 +31,8 @@ class UploadConfig:
     chunk_size: int = 8192
     max_file_size: int = 104857600  # 100MB
     checkpoint_file: str = ".upload_checkpoint"
+    # 上传方式: proxy (服务器中转, 默认), direct (OSS直传), auto (自动检测)
+    upload_mode: str = "proxy"
 
 
 @dataclass
@@ -148,7 +150,10 @@ class Config:
         if "server" in data:
             config.server = ServerConfig(**data["server"])
         if "upload" in data:
-            config.upload = UploadConfig(**data["upload"])
+            upload_data = data["upload"].copy()
+            # 过滤掉不存在的字段
+            valid_fields = {k: v for k, v in upload_data.items() if k in UploadConfig.__dataclass_fields__}
+            config.upload = UploadConfig(**valid_fields)
         if "output" in data:
             config.output = OutputConfig(**data["output"])
         if "cache" in data:

@@ -145,6 +145,7 @@ Options:
   --output PATH           报告输出目录（默认当前目录）
   --format [csv|html|both] 报告格式
   --verbose               显示详细日志（DEBUG 级别）
+  --upload-mode [proxy|direct|auto]  上传方式（默认 proxy）
   --version               显示版本信息
   --help                  显示帮助信息
 ```
@@ -208,6 +209,23 @@ shareustc-upload --csv my_upload.csv --dry-run
 shareustc-upload --csv my_upload.csv --config /path/to/config.yaml
 ```
 
+### 示例 7: 使用 OSS 直传方式
+
+如果你的服务器启用了 OSS 存储，可以使用直传方式上传，速度更快：
+
+```bash
+# 使用 OSS 直传（绕过服务器中转，直接上传到 OSS）
+shareustc-upload --csv my_upload.csv --upload-mode direct
+
+# 自动检测并使用最优上传方式
+shareustc-upload --csv my_upload.csv --upload-mode auto
+```
+
+**上传方式说明：**
+- `proxy` (默认): 文件先上传到服务器，再由服务器上传到 OSS。兼容性好，适合所有服务器配置。
+- `direct`: 使用 STS 临时凭证直传 OSS，与网页端上传方式一致。上传速度更快，减少服务器带宽压力，需要服务器启用 OSS 存储。
+- `auto`: 自动检测服务器配置，如果启用 OSS 则使用直传，否则使用服务器中转。
+
 
 
 ## 配置文件说明
@@ -224,6 +242,18 @@ shareustc-upload --csv my_upload.csv --config /path/to/config.yaml
 server:
   base_url: "https://share.ustcer.top"  # 你的服务器地址
 ```
+
+**上传方式配置:**
+
+```yaml
+upload:
+  # 上传方式: proxy (服务器中转, 默认), direct (OSS直传), auto (自动检测)
+  upload_mode: proxy
+```
+
+- `proxy` (默认): 文件先上传到服务器，再由服务器上传到 OSS。兼容性好，适合所有服务器配置。
+- `direct`: 使用 STS 临时凭证直传 OSS，与网页端上传方式一致。上传速度更快，减少服务器带宽压力，需要服务器启用 OSS 存储。
+- `auto`: 自动检测服务器配置，如果启用 OSS 则使用直传，否则使用服务器中转。
 
 **其他配置项可按需更改**
 
