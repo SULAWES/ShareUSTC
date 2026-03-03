@@ -63,21 +63,6 @@ impl FileService {
         Ok(format!("{:x}", hasher.finalize()))
     }
 
-    /// 从字节切片分块计算 SHA-256 哈希（模拟流式，用于内存中数据）
-    ///
-    /// 将大数据切分成块处理，减少内存峰值
-    #[allow(dead_code)]
-    pub fn calculate_hash_chunked(data: &[u8], chunk_size: Option<usize>) -> String {
-        let mut hasher = Sha256::new();
-        let chunk_size = chunk_size.unwrap_or(64 * 1024); // 默认64KB
-
-        for chunk in data.chunks(chunk_size) {
-            hasher.update(chunk);
-        }
-
-        format!("{:x}", hasher.finalize())
-    }
-
     /// 验证资源文件
     pub fn validate_resource_file(
         file_name: &str,

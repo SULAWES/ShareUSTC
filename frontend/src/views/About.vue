@@ -310,6 +310,7 @@
 import { ref, onMounted, nextTick } from 'vue';
 import { Upload, Search, Star, HomeFilled, Trophy, Loading, Link, User } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import logger from '../utils/logger';
 
 interface Contributor {
   login: string;
@@ -436,7 +437,7 @@ const fetchContributors = async (retryCount = 0): Promise<void> => {
 
     // 处理 403 速率限制错误
     if (response.status === 403) {
-      console.warn('GitHub API 速率限制，请稍后重试');
+      logger.warn('[About]', 'GitHub API 速率限制，请稍后重试');
       contributorsError.value = true;
       contributorsLoading.value = false;
       return;

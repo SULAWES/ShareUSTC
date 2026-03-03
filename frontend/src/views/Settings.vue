@@ -109,6 +109,7 @@ import { ref, onMounted, computed } from 'vue';
 import { Collection, Timer, Delete, Refresh, Setting } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { resourceCache, type CacheStats } from '../utils/resourceCache';
+import logger from '../utils/logger';
 
 // 用户指南弹窗 LocalStorage 键名
 const GUIDE_MODAL_KEY = 'userGuideModalClosed';
@@ -223,7 +224,7 @@ const loadUserGuideSetting = () => {
       showUserGuide.value = true;
     }
   } catch (e) {
-    console.warn('Failed to parse user guide modal setting:', e);
+    logger.warn('[Settings]', 'Failed to parse user guide modal setting:', e);
     showUserGuide.value = true;
   }
 };
@@ -244,7 +245,7 @@ const handleUserGuideChange = (value: boolean) => {
       ElMessage.success('已永久关闭用户指南弹窗');
     }
   } catch (e) {
-    console.error('Failed to save user guide modal setting:', e);
+    logger.error('[Settings]', 'Failed to save user guide modal setting:', e);
     ElMessage.error('设置保存失败');
   }
 };

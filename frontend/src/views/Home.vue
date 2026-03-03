@@ -215,6 +215,7 @@ import { getHotResources, getResourceCount } from '../api/resource';
 import type { HotResourceItem } from '../types/resource';
 import { ResourceTypeLabels } from '../types/resource';
 import UserGuideModal from '../components/common/UserGuideModal.vue';
+import logger from '../utils/logger';
 import {
   Search,
   Trophy,
@@ -289,21 +290,21 @@ const fetchHotResources = async () => {
   loadingHot.value = true;
   hotResources.value = [];
   try {
-    console.log('开始获取热门资源...');
+    logger.info('[Home]', '开始获取热门资源...');
     const result = await getHotResources(10);
-    console.log('热门资源API返回:', result);
-    
+    logger.info('[Home]', '热门资源API返回:', result);
+
     if (result && Array.isArray(result)) {
       hotResources.value = result;
-      console.log('成功设置热门资源:', hotResources.value.length, '条');
+      logger.info('[Home]', `成功设置热门资源: ${hotResources.value.length} 条`);
       if (result.length > 0) {
-        console.log('第一条数据:', JSON.stringify(result[0]));
+        logger.debug('[Home]', '第一条数据:', result[0]);
       }
     } else {
-      console.warn('返回数据不是数组:', result);
+      logger.warn('[Home]', '返回数据不是数组:', result);
     }
   } catch (error: any) {
-    console.error('获取热门资源失败:', error);
+    logger.error('[Home]', '获取热门资源失败:', error);
     ElMessage.error('获取热门资源失败');
   } finally {
     loadingHot.value = false;
@@ -333,7 +334,7 @@ const fetchResourceCount = async () => {
     const result = await getResourceCount();
     resourceCount.value = result.total;
   } catch (error) {
-    console.error('获取资源总数失败:', error);
+    logger.error('[Home]', '获取资源总数失败:', error);
   }
 };
 

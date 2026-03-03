@@ -269,6 +269,7 @@ import type { Course } from '../../types/course';
 import { useFavoriteStore } from '../../stores/favorite';
 import { useAuthStore } from '../../stores/auth';
 import type { Favorite } from '../../types/favorite';
+import logger from '../../utils/logger';
 
 const router = useRouter();
 const route = useRoute();
@@ -315,7 +316,7 @@ const loadFavorites = async () => {
     await favoriteStore.fetchFavorites();
     favoritesWithCount.value = favoriteStore.favorites;
   } catch (error) {
-    console.error('加载收藏夹失败:', error);
+    logger.error('[ResourceList]', '加载收藏夹失败:', error);
   }
 };
 
@@ -429,7 +430,7 @@ const loadTeachers = async () => {
     const teachers = await getTeachers();
     teacherList.value = teachers;
   } catch (error: any) {
-    console.error('加载教师列表失败:', error);
+    logger.error('[ResourceList]', '加载教师列表失败:', error);
   } finally {
     loadingTeachers.value = false;
   }
@@ -442,7 +443,7 @@ const loadCourses = async () => {
     const courses = await getCourses();
     courseList.value = courses;
   } catch (error: any) {
-    console.error('加载课程列表失败:', error);
+    logger.error('[ResourceList]', '加载课程列表失败:', error);
   } finally {
     loadingCourses.value = false;
   }

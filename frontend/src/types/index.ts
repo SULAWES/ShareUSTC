@@ -8,12 +8,6 @@ export * from './rating';
 export * from './like';
 export * from './comment';
 
-export interface ApiResponse<T> {
-  code: number;
-  message: string;
-  data: T;
-}
-
 export interface HelloResponse {
   message: string;
   status: string;

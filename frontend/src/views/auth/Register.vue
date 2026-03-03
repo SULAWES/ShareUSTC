@@ -100,6 +100,7 @@ import { useRouter } from 'vue-router';
 import { User, Lock, Message } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import type { FormInstance, FormRules } from 'element-plus';
+import logger from '../../utils/logger';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -190,7 +191,7 @@ const handleSubmit = async () => {
     }
   } catch (error) {
     // 验证失败，不执行注册
-    console.log('表单验证失败');
+    logger.debug('[Register]', '表单验证失败');
   }
 };
 </script>

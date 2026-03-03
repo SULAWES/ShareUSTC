@@ -16,24 +16,21 @@ pub struct Comment {
 
 /// 创建评论请求
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateCommentRequest {
     pub content: String,
 }
 
 /// 评论响应（包含用户信息）
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommentResponse {
     pub id: Uuid,
-    #[serde(rename = "resourceId")]
     pub resource_id: Uuid,
-    #[serde(rename = "userId")]
     pub user_id: Uuid,
-    #[serde(rename = "userName")]
     pub user_name: String,
-    #[serde(rename = "userAvatar")]
     pub user_avatar: Option<String>,
     pub content: String,
-    #[serde(rename = "createdAt")]
     pub created_at: String, // 使用 String 类型，在构造时格式化为 ISO 8601 格式
 }
 
@@ -47,11 +44,11 @@ pub struct CommentListQuery {
 
 /// 评论列表响应
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommentListResponse {
     pub comments: Vec<CommentResponse>,
     pub total: i64,
     pub page: i64,
-    #[serde(rename = "perPage")]
     pub per_page: i64,
 }
 

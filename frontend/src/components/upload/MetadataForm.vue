@@ -165,6 +165,7 @@ import { searchResourcesForRelation } from '../../api/resource';
 import type { Teacher } from '../../types/teacher';
 import type { Course } from '../../types/course';
 import type { RelatedResourceItem } from '../../types/resource';
+import logger from '../../utils/logger';
 
 interface FormData {
   title: string;
@@ -229,7 +230,7 @@ const searchResources = (query: string) => {
       const results = await searchResourcesForRelation(query.trim(), undefined, 20);
       searchResults.value = results;
     } catch (error) {
-      console.error('搜索资源失败', error);
+      logger.error('[MetadataForm]', '搜索资源失败', error);
       searchResults.value = [];
     } finally {
       searching.value = false;
@@ -244,7 +245,7 @@ const loadTeachers = async () => {
     const res = await getTeachers();
     teachers.value = res;
   } catch (error) {
-    console.error('加载教师列表失败', error);
+    logger.error('[MetadataForm]', '加载教师列表失败', error);
   } finally {
     loadingTeachers.value = false;
   }
@@ -257,7 +258,7 @@ const loadCourses = async () => {
     const res = await getCourses();
     courses.value = res;
   } catch (error) {
-    console.error('加载课程列表失败', error);
+    logger.error('[MetadataForm]', '加载课程列表失败', error);
   } finally {
     loadingCourses.value = false;
   }

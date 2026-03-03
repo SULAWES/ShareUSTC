@@ -97,6 +97,7 @@ import { ResourceTypeLabels } from '../../types/resource';
 import type { Teacher } from '../../types/teacher';
 import type { Course } from '../../types/course';
 import type { RelatedResourceItem } from '../../types/resource';
+import logger from '../../utils/logger';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -150,7 +151,7 @@ const loadTeachers = async () => {
     const res = await getTeachers();
     teachers.value = res;
   } catch (error) {
-    console.error('加载教师列表失败', error);
+    logger.error('[EditResourceRelationsModal]', '加载教师列表失败', error);
   } finally {
     loadingTeachers.value = false;
   }
@@ -163,7 +164,7 @@ const loadCourses = async () => {
     const res = await getCourses();
     courses.value = res;
   } catch (error) {
-    console.error('加载课程列表失败', error);
+    logger.error('[EditResourceRelationsModal]', '加载课程列表失败', error);
   } finally {
     loadingCourses.value = false;
   }
@@ -186,7 +187,7 @@ const searchResources = (query: string) => {
       const results = await searchResourcesForRelation(query.trim(), props.resourceId, 20);
       searchResults.value = results;
     } catch (error) {
-      console.error('搜索资源失败', error);
+      logger.error('[EditResourceRelationsModal]', '搜索资源失败', error);
       searchResults.value = [];
     } finally {
       searching.value = false;

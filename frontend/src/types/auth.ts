@@ -51,13 +51,6 @@ export interface RefreshTokenRequest {
   refreshToken: string;
 }
 
-// API 统一响应格式
-export interface ApiResponse<T> {
-  code: number;
-  message: string;
-  data: T;
-}
-
 // 认证状态
 export interface AuthState {
   user: User | null;

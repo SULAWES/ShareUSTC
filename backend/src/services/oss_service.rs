@@ -385,11 +385,6 @@ impl OssStorage {
             }
         }
     }
-
-    #[allow(dead_code)]
-    pub fn bucket_name(&self) -> &str {
-        &self.config.bucket
-    }
 }
 
 impl StorageBackend for OssStorage {

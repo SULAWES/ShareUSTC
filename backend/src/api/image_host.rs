@@ -152,6 +152,7 @@ pub async fn delete_image(
 
 /// 图片列表查询参数
 #[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImageListQuery {
     pub page: Option<i32>,
     pub per_page: Option<i32>,

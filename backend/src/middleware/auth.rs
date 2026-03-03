@@ -83,16 +83,6 @@ impl JwtAuth {
         }
     }
 
-    /// 添加公开路径（不需要认证）- 向后兼容（预留接口）
-    #[allow(dead_code)]
-    pub fn with_public_paths(mut self, paths: Vec<String>) -> Self {
-        self.public_paths = paths
-            .into_iter()
-            .map(|p| PublicPathRule::all_methods(&p))
-            .collect();
-        self
-    }
-
     /// 添加带方法的公开路径规则
     pub fn with_public_rules(mut self, rules: Vec<PublicPathRule>) -> Self {
         self.public_paths = rules;

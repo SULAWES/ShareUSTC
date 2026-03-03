@@ -64,9 +64,7 @@ pub struct UserInfo {
     pub email: Option<String>,
     pub role: String,
     pub bio: Option<String>,
-    #[serde(rename = "isVerified")]
     pub is_verified: bool,
-    #[serde(rename = "createdAt")]
     pub created_at: NaiveDateTime,
 }
 

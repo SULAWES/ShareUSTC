@@ -72,6 +72,7 @@
 import { ref, onMounted } from 'vue';
 import { CircleCheck } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import logger from '../../utils/logger';
 
 // 状态
 const visible = ref(false);
@@ -93,7 +94,7 @@ function shouldShowModal(): boolean {
     }
   } catch (e) {
     // 如果解析失败，默认显示
-    console.warn('Failed to parse user guide modal setting:', e);
+    logger.warn('[UserGuideModal]', 'Failed to parse user guide modal setting:', e);
   }
   return true;
 }
@@ -116,7 +117,7 @@ function handleClose() {
       }));
       ElMessage.success('已永久关闭用户指南弹窗，可在设置中重新开启');
     } catch (e) {
-      console.error('Failed to save user guide modal setting:', e);
+      logger.error('[UserGuideModal]', 'Failed to save user guide modal setting:', e);
     }
   }
   visible.value = false;
@@ -131,7 +132,7 @@ function isPermanentlyClosed(): boolean {
       return data.permanent === true;
     }
   } catch (e) {
-    console.warn('Failed to parse user guide modal setting:', e);
+    logger.warn('[UserGuideModal]', 'Failed to parse user guide modal setting:', e);
   }
   return false;
 }
@@ -149,7 +150,7 @@ function setPermanentlyClosed(closed: boolean): void {
       localStorage.removeItem(GUIDE_MODAL_KEY);
     }
   } catch (e) {
-    console.error('Failed to save user guide modal setting:', e);
+    logger.error('[UserGuideModal]', 'Failed to save user guide modal setting:', e);
   }
 }
 
