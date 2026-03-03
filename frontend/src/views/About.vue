@@ -164,29 +164,103 @@
         <div class="resource-source-list">
 
           <div class="resource-source-item">
-            <div class="source-info">
-              <span class="source-label">资料来源：</span>
-              <a
-                href="https://github.com/USTC-Resource/USTC-Course"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="source-link"
-              >
-                <el-icon><Link /></el-icon>
-                Github: USTC-Resource/USTC-Course
-              </a>
+            <div class="source-main">
+              <div class="source-info">
+                <span class="source-label">资料来源：</span>
+                <a
+                  href="https://github.com/USTC-Resource/USTC-Course"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="source-link"
+                >
+                  <el-icon><Link /></el-icon>
+                  Github: USTC-Resource/USTC-Course
+                </a>
+              </div>
+              <div class="uploader-info">
+                <span class="uploader-label">上传者：</span>
+                <router-link to="/user/9ce37c81-8560-40c2-8d0f-05d079401273" class="uploader-link">
+                  <el-icon><User /></el-icon>
+                  USTC_Course
+                </router-link>
+              </div>
             </div>
-            <div class="uploader-info">
-              <span class="uploader-label">上传者：</span>
-              <router-link to="/user/9ce37c81-8560-40c2-8d0f-05d079401273" class="uploader-link">
-                <el-icon><User /></el-icon>
-                USTC_Course
-              </router-link>
+            <el-button
+              type="primary"
+              size="small"
+              @click="showSourceDetail('ustcCourse')"
+            >
+              <el-icon><InfoFilled /></el-icon>
+              查看详情
+            </el-button>
+          </div>
+
+          <div class="resource-source-item">
+            <div class="source-main">
+              <div class="source-info">
+                <span class="source-label">资料来源：</span>
+                <a
+                  href="https://share.feixu.site/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="source-link"
+                >
+                  <el-icon><Link /></el-icon>
+                  《我的科大》资源分享版块：share.feixu.site
+                </a>
+              </div>
+              <div class="uploader-info">
+                <span class="uploader-label">上传者（暂无）：</span>
+                <router-link to="/user/404" class="uploader-link">
+                  <el-icon><User /></el-icon>
+                  暂无
+                </router-link>
+              </div>
             </div>
+            <el-button
+              type="primary"
+              size="small"
+              @click="showSourceDetail('feixu')"
+            >
+              <el-icon><InfoFilled /></el-icon>
+              查看详情
+            </el-button>
           </div>
 
         </div>
       </section>
+
+      <!-- 资源来源详情弹窗 -->
+      <el-dialog
+        v-model="sourceDetailVisible"
+        title="资料来源详情"
+        width="600px"
+        destroy-on-close
+      >
+        <div v-if="selectedSource" class="source-detail-content">
+          <h3 class="detail-title">{{ selectedSource.name }}</h3>
+          <div class="detail-section">
+            <h4>来源介绍</h4>
+            <p>{{ selectedSource.description }}</p>
+          </div>
+          <div class="detail-section">
+            <h4>包含内容</h4>
+            <p>{{ selectedSource.contents }}</p>
+          </div>
+          <div class="detail-section">
+            <h4>修改内容</h4>
+            <p>{{ selectedSource.modifications }}</p>
+          </div>
+          <div class="detail-section">
+            <h4>授权信息</h4>
+            <p>{{ selectedSource.license }}</p>
+          </div>
+          <div class="detail-section">
+            <h4>更新时间</h4>
+            <p>{{ selectedSource.updateTime }}</p>
+          </div>
+        </div>
+      </el-dialog>
 
       <!-- 联系我们 -->
       <section class="section">
@@ -308,7 +382,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue';
-import { Upload, Search, Star, HomeFilled, Trophy, Loading, Link, User } from '@element-plus/icons-vue';
+import { Upload, Search, Star, HomeFilled, Trophy, Loading, Link, User, InfoFilled } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import logger from '../utils/logger';
 
@@ -321,6 +395,16 @@ interface Contributor {
   htmlUrl: string;
 }
 
+interface SourceDetail {
+  id: string;
+  name: string;
+  description: string;
+  contents: string;
+  license: string;
+  updateTime: string;
+  modifications: string;
+}
+
 const repoStats = ref({
   stars: '...',
   forks: '...',
@@ -331,6 +415,36 @@ const contributors = ref<Contributor[]>([]);
 const contributorsLoading = ref(true);
 const contributorsError = ref(false);
 const contributorsComputing = ref(false);
+
+// 资源来源详情数据
+const sourceDetails: Record<string, SourceDetail> = {
+  ustcCourse: {
+    id: 'ustcCourse',
+    name: 'USTC-Course',
+    description: 'Github 开源仓库 USTC-Resource/USTC-Course',
+    contents: '部分资料',
+    license: '仓库过于陈旧，疑似停止维护，暂未获得授权，如有侵权请联系我们下架。',
+    updateTime: '2026年3月2日上传，仓库数据截至 commit d091d4d',
+    modifications: '移除了部分实验/作业相关资料，仅保留了考试试卷、复习提纲、课程笔记等资源。将 ./概率论与数理统计/notes/P&MS - 20160422Revised.pdf 此份资料第二页的私货替换为空白页面。'
+  },
+  feixu: {
+    id: 'feixu',
+    name: 'share.feixu.site',
+    description: '《我的科大》网站的课程资源',
+    contents: '部分资料',
+    license: '已经积极联系网站开发者sxl学长，尚未收到回复。如有侵权请联系我们下架。',
+    updateTime: '暂未上传，已爬取数据截至2026年3月3日22:25',
+    modifications: '移除了 ./数学类/实分析/2021实分析H期末考试.pdf 这份空文件，疑似是《我的科大》维护者未能成功上传。'
+  },
+};
+
+const sourceDetailVisible = ref(false);
+const selectedSource = ref<SourceDetail | null>(null);
+
+const showSourceDetail = (sourceId: string) => {
+  selectedSource.value = sourceDetails[sourceId] || null;
+  sourceDetailVisible.value = true;
+};
 
 // GitHub API 缓存配置
 const CACHE_KEY = 'github_contributors_cache';
@@ -1053,13 +1167,21 @@ const copyQQGroup = async () => {
 
 .resource-source-item {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 24px;
+  justify-content: space-between;
+  gap: 16px;
   padding: 16px 20px;
   background: #f6f8fa;
   border-radius: 8px;
   border-left: 3px solid #409eff;
+}
+
+.source-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  flex: 1;
 }
 
 .source-info,
@@ -1108,6 +1230,55 @@ const copyQQGroup = async () => {
 .source-link .el-icon,
 .uploader-link .el-icon {
   font-size: 14px;
+}
+
+/* 资源来源详情弹窗 */
+.source-detail-content {
+  padding: 0 8px;
+}
+
+.detail-title {
+  font-size: 20px;
+  color: #303133;
+  margin: 0 0 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #ebeef5;
+}
+
+.detail-section {
+  margin-bottom: 20px;
+}
+
+.detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.detail-section h4 {
+  font-size: 15px;
+  color: #606266;
+  margin: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.detail-section p {
+  color: #606266;
+  line-height: 1.8;
+  margin: 0;
+}
+
+.content-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #606266;
+}
+
+.content-list li {
+  line-height: 1.8;
+  margin-bottom: 4px;
+}
+
+.content-list li:last-child {
+  margin-bottom: 0;
 }
 
 /* QQ 群号 */
@@ -1210,6 +1381,13 @@ const copyQQGroup = async () => {
 
   /* 资源来源移动端适配 */
   .resource-source-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .source-main {
+    width: 100%;
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
