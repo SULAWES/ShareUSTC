@@ -20,6 +20,7 @@ use db::AppState;
 use middleware::{JwtAuth, PublicPathRule};
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct HelloResponse {
     message: String,
     status: String,

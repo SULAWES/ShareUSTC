@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::utils::build_content_disposition;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use chrono::Utc;
 use hmac::{Hmac, Mac};
@@ -627,40 +628,6 @@ fn required(value: Option<&str>, env_name: &str) -> Result<String, StorageError>
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .ok_or_else(|| StorageError::Config(format!("缺少配置: {}", env_name)))
-}
-
-/// 对文件名进行 RFC 5987 编码，用于支持中文等非 ASCII 字符
-/// 参考: https://datatracker.ietf.org/doc/html/rfc5987
-fn encode_rfc5987(filename: &str) -> String {
-    let mut result = String::new();
-    for c in filename.chars() {
-        if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
-            // ASCII 字母数字和常用符号直接保留
-            result.push(c);
-        } else {
-            // 非 ASCII 字符进行 percent-encoding
-            for byte in c.encode_utf8(&mut [0; 4]).bytes() {
-                result.push_str(&format!("%{:02X}", byte));
-            }
-        }
-    }
-    result
-}
-
-/// 构建 Content-Disposition 头部值，支持中文文件名
-/// 使用 RFC 5987 编码：filename*=UTF-8''%E4%B8%AD%E6%96%87
-fn build_content_disposition(filename: &str) -> String {
-    // 检查是否包含非 ASCII 字符
-    let has_non_ascii = filename.chars().any(|c| !c.is_ascii());
-
-    if has_non_ascii {
-        // 包含中文等非 ASCII 字符，使用 RFC 5987 编码
-        let encoded = encode_rfc5987(filename);
-        format!("attachment; filename*=UTF-8''{}", encoded)
-    } else {
-        // 纯 ASCII 文件名，直接使用
-        format!("attachment; filename=\"{}\"", filename)
-    }
 }
 
 fn canonical_query_string(params: &BTreeMap<String, String>) -> String {

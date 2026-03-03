@@ -153,7 +153,7 @@ export const useAuthStore = defineStore('auth', () => {
   };
 
   // 设置认证数据
-  // 注意：AuthResponse 现在直接是 User 对象（API 不再包装在 {user: ...} 中）
+  // 注意：AuthResponse 类型已定义为 User 的别名，API 直接返回用户信息
   const setAuthData = (response: AuthResponse) => {
     // 设置用户信息
     user.value = response;

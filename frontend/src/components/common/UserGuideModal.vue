@@ -36,13 +36,35 @@
           <div class="item-text">
             <span>欢迎</span>
             <span class="highlight-text">上传资源</span>
-            <span>或为资源</span>
+            <span>，或为资源</span>
             <span class="highlight-text">打分</span>
             <span>（均需要</span>
             <span class="highlight-text">注册</span>
             <span>）</span>
           </div>
         </div>
+
+        <div class="guide-item">
+          <div class="item-number">4</div>
+          <div class="item-text">
+            <span class="highlight-text">强烈</span>
+            <span>建议使用</span>
+            <span class="highlight-text">电脑</span>
+            <span>的</span>
+            <span class="highlight-text">Chrome, Edge</span>
+            <span>浏览器访问，手机端UI正在适配中</span>
+          </div>
+        </div>
+
+        <div class="guide-item">
+          <div class="item-number">5</div>
+          <div class="item-text">
+            <span>所有资源均为</span>
+            <span class="highlight-text">无偿</span>
+            <span>分享，禁止用于任何形式的盈利活动</span>
+          </div>
+        </div>
+
       </div>
 
       <div class="guide-footer-hint">

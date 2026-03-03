@@ -295,7 +295,6 @@ impl ToString for AuditStatus {
 
 /// 资源结构体（对应数据库 resources 表）
 #[derive(Debug, Clone, FromRow, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Resource {
     pub id: Uuid,
     pub title: String,
@@ -320,7 +319,6 @@ pub struct Resource {
 
 /// 资源统计信息（对应数据库 resource_stats 表）
 #[derive(Debug, Clone, FromRow, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ResourceStats {
     pub resource_id: Uuid,
     pub views: i32,

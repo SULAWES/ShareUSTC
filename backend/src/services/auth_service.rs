@@ -139,7 +139,7 @@ impl AuthService {
                 access_token,
                 refresh_token,
                 token_type: "Bearer".to_string(),
-                expires_in: 15 * 60, // 15分钟
+                expires_in: 60 * 60, // 60分钟
             },
         })
     }
@@ -225,7 +225,7 @@ impl AuthService {
                 access_token,
                 refresh_token,
                 token_type: "Bearer".to_string(),
-                expires_in: 15 * 60, // 15分钟
+                expires_in: 60 * 60, // 60分钟
             },
         })
     }

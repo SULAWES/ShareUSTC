@@ -27,7 +27,7 @@ export const getResourceList = async (params?: ResourceListQuery): Promise<Resou
     url: '/resources',
     method: 'get',
     params
-  }) as Promise<ResourceListResponse>;
+  });
 };
 
 /**
@@ -40,7 +40,7 @@ export const searchResources = async (params: ResourceSearchQuery): Promise<Reso
     url: '/resources/search',
     method: 'get',
     params
-  }) as Promise<ResourceListResponse>;
+  });
 };
 
 /**
@@ -52,7 +52,7 @@ export const getResourceDetail = async (resourceId: string): Promise<ResourceDet
   return request({
     url: `/resources/${resourceId}`,
     method: 'get'
-  }) as Promise<ResourceDetail>;
+  });
 };
 
 /**
@@ -65,7 +65,7 @@ export const getMyResources = async (params?: ResourceListQuery): Promise<Resour
     url: '/resources/my',
     method: 'get',
     params
-  }) as Promise<ResourceListResponse>;
+  });
 };
 
 /**
@@ -135,7 +135,7 @@ export const uploadResource = async (
         onProgress(percent);
       }
     }
-  }) as Promise<UploadResourceResponse>;
+  });
 };
 
 /**
@@ -146,7 +146,7 @@ export const deleteResource = async (resourceId: string): Promise<void> => {
   return request({
     url: `/resources/${resourceId}`,
     method: 'delete'
-  }) as Promise<void>;
+  });
 };
 
 /**
@@ -396,7 +396,7 @@ export const getResourceRawContent = async (resourceId: string): Promise<GetReso
   return request({
     url: `/resources/${resourceId}/raw`,
     method: 'get'
-  }) as Promise<GetResourceRawContentResponse>;
+  });
 };
 
 /**
@@ -413,7 +413,7 @@ export const updateResourceContent = async (
     url: `/resources/${resourceId}/content`,
     method: 'put',
     data
-  }) as Promise<UpdateResourceContentResponse>;
+  });
 };
 
 /**
@@ -426,7 +426,7 @@ export const getHotResources = async (limit?: number): Promise<HotResourceItem[]
     url: '/resources/hot',
     method: 'get',
     params: { limit }
-  }) as Promise<HotResourceItem[]>;
+  });
 };
 
 /**
@@ -437,7 +437,7 @@ export const getResourceCount = async (): Promise<{ total: number }> => {
   return request({
     url: '/resources/count',
     method: 'get'
-  }) as Promise<{ total: number }>;
+  });
 };
 
 /**
@@ -461,7 +461,7 @@ export const searchResourcesForRelation = async (
       excludeId,
       limit
     }
-  }) as Promise<RelatedResourceItem[]>;
+  });
 };
 
 /**
@@ -473,7 +473,7 @@ export const getResourceRelations = async (resourceId: string): Promise<RelatedR
   return request({
     url: `/resources/${resourceId}/relations`,
     method: 'get'
-  }) as Promise<RelatedResourceItem[]>;
+  });
 };
 
 /**
@@ -494,7 +494,7 @@ export const updateResourceRelations = async (
     url: `/resources/${resourceId}/relations`,
     method: 'put',
     data
-  }) as Promise<{ message: string }>;
+  });
 };
 
 /**
@@ -511,5 +511,5 @@ export const updateResourceDescription = async (
     url: `/resources/${resourceId}/description`,
     method: 'put',
     data: { description }
-  }) as Promise<{ message: string }>;
+  });
 };
