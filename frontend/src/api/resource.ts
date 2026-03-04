@@ -172,10 +172,10 @@ const downloadFromCache = (cached: { blob: Blob; fileName?: string; contentType:
  * 下载资源
  * 优先使用本地缓存，没有缓存则走正常下载流程
  * @param resourceId 资源ID
- * @param fileName 文件名
+ * @param fileName 文件名（可选，不提供时会根据 resourceDetail 生成）
  * @param options 可选参数
  * @param options.useCache 是否使用缓存（默认true）
- * @param options.resourceDetail 资源详情（用于获取文件名）
+ * @param options.resourceDetail 资源详情（用于获取文件名和扩展名）
  */
 export const downloadResource = async (
   resourceId: string,
@@ -185,13 +185,19 @@ export const downloadResource = async (
   const { useCache = true, resourceDetail } = options;
 
   try {
+    // 生成带扩展名的文件名
+    let downloadFileName = fileName;
+    if (!downloadFileName && resourceDetail?.title && resourceDetail?.resourceType) {
+      downloadFileName = buildFileName(resourceDetail.title, resourceDetail.resourceType);
+    }
+
     // 1. 检查缓存
     if (useCache) {
       const cached = await resourceCache.get(resourceId);
       if (cached) {
         logger.info('[Resource]', `从缓存下载 | resourceId=${resourceId}, size=${cached.fileSize}`);
-        const downloadFileName = fileName || cached.fileName || resourceDetail?.title || 'download';
-        downloadFromCache(cached, downloadFileName);
+        const finalFileName = downloadFileName || cached.fileName || resourceDetail?.title || 'download';
+        downloadFromCache(cached, finalFileName);
         return;
       }
     }
@@ -282,14 +288,16 @@ export const getResourcePreviewInfo = async (
  * @param resourceId 资源ID
  * @param previewInfo 预览信息（从 getResourcePreviewInfo 获取）
  * @param options 可选参数
+ * @param options.useCache 是否使用缓存（默认true）
+ * @param options.resourceDetail 资源详情，用于生成文件名
  * @returns Blob 文件内容
  */
 export const getResourcePreviewContent = async (
   resourceId: string,
   previewInfo: PreviewUrlResponse,
-  options: { useCache?: boolean } = {}
+  options: { useCache?: boolean; resourceDetail?: { title?: string; resourceType?: string } } = {}
 ): Promise<Blob> => {
-  const { useCache = true } = options;
+  const { useCache = true, resourceDetail } = options;
 
   // 1. 检查缓存（使用 updatedAt 进行版本校验）
   if (useCache) {
@@ -319,18 +327,56 @@ export const getResourcePreviewContent = async (
       return cached.blob;
     }
     // 缓存丢失，回退到 content 接口
-    return getResourceContent(resourceId, { useCache });
+    return getResourceContent(resourceId, { useCache, updatedAt: previewInfo.updatedAt, resourceDetail });
   } else {
     // 本地存储：通过 content 接口
-    return getResourceContent(resourceId, { useCache });
+    return getResourceContent(resourceId, { useCache, updatedAt: previewInfo.updatedAt, resourceDetail });
   }
 
   // 存入缓存（使用 updatedAt 作为版本标识）
-  if (useCache) {
+  if (useCache && resourceDetail?.title && resourceDetail?.resourceType) {
+    const fileName = buildFileName(resourceDetail.title, resourceDetail.resourceType);
+    await resourceCache.set(resourceId, blob, contentType, previewInfo.updatedAt, fileName);
+  } else if (useCache) {
     await resourceCache.set(resourceId, blob, contentType, previewInfo.updatedAt);
   }
 
   return new Blob([blob], { type: contentType });
+};
+
+/**
+ * 根据资源类型获取文件扩展名
+ * @param resourceType 资源类型
+ * @returns 文件扩展名
+ */
+const getExtensionByType = (resourceType: string): string => {
+  const typeMap: Record<string, string> = {
+    'web_markdown': 'md',
+    'ppt': 'ppt',
+    'pptx': 'pptx',
+    'doc': 'doc',
+    'docx': 'docx',
+    'pdf': 'pdf',
+    'txt': 'txt',
+    'jpeg': 'jpg',
+    'jpg': 'jpg',
+    'png': 'png',
+    'zip': 'zip',
+  };
+  return typeMap[resourceType.toLowerCase()] || 'bin';
+};
+
+/**
+ * 构建带扩展名的文件名
+ * @param title 资源标题
+ * @param resourceType 资源类型
+ * @returns 带扩展名的文件名
+ */
+const buildFileName = (title: string, resourceType: string): string => {
+  const extension = getExtensionByType(resourceType);
+  // 清理文件名中的非法字符
+  const sanitizedTitle = title.replace(/[<>:"/\\|?*]/g, '_');
+  return `${sanitizedTitle}.${extension}`;
 };
 
 /**
@@ -340,13 +386,14 @@ export const getResourcePreviewContent = async (
  * @param options 可选参数
  * @param options.useCache 是否使用缓存（默认true）
  * @param options.updatedAt 资源更新时间（用于缓存版本校验）
+ * @param options.resourceDetail 资源详情，用于生成文件名
  * @returns Blob 文件内容
  */
 export const getResourceContent = async (
   resourceId: string,
-  options: { useCache?: boolean; updatedAt?: string } = {}
+  options: { useCache?: boolean; updatedAt?: string; resourceDetail?: { title?: string; resourceType?: string } } = {}
 ): Promise<Blob> => {
-  const { useCache = true, updatedAt } = options;
+  const { useCache = true, updatedAt, resourceDetail } = options;
 
   // 1. 先检查本地缓存（使用 updatedAt 进行版本校验）
   if (useCache) {
@@ -379,7 +426,10 @@ export const getResourceContent = async (
   const blob = await response.blob();
 
   // 3. 存入缓存（使用服务器返回的 updatedAt 作为版本标识）
-  if (useCache) {
+  if (useCache && resourceDetail?.title && resourceDetail?.resourceType) {
+    const fileName = buildFileName(resourceDetail.title, resourceDetail.resourceType);
+    await resourceCache.set(resourceId, blob, contentType, serverUpdatedAt, fileName);
+  } else if (useCache) {
     await resourceCache.set(resourceId, blob, contentType, serverUpdatedAt);
   }
 

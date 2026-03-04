@@ -109,6 +109,8 @@ pdfjsLib.GlobalWorkerOptions.workerPort = new PDFWorker();
 
 const props = defineProps<{
   resourceId: string;
+  resourceType?: string;
+  resourceTitle?: string;
 }>();
 
 const loading = ref(true);
@@ -143,7 +145,12 @@ const loadPdf = async () => {
     logger.debug('[PdfViewer]', `获取到预览信息 | storageType=${previewInfo.storageType}, directAccess=${previewInfo.directAccess}`);
 
     // 获取内容（会自动使用缓存）
-    const blob = await getResourcePreviewContent(props.resourceId, previewInfo);
+    const blob = await getResourcePreviewContent(props.resourceId, previewInfo, {
+      resourceDetail: props.resourceTitle && props.resourceType ? {
+        title: props.resourceTitle,
+        resourceType: props.resourceType
+      } : undefined
+    });
     logger.debug('[PdfViewer]', `获取到blob | type=${blob.type}, size=${blob.size}`);
 
     // 确保blob类型正确
@@ -329,7 +336,13 @@ const toggleFullscreen = async () => {
 const downloadPdf = async () => {
   try {
     logger.info('[PdfViewer]', `开始下载PDF | resourceId=${props.resourceId}`);
-    await downloadResource(props.resourceId);
+    await downloadResource(props.resourceId, undefined, {
+      useCache: true,
+      resourceDetail: props.resourceTitle && props.resourceType ? {
+        title: props.resourceTitle,
+        resourceType: props.resourceType
+      } : undefined
+    });
     ElMessage.success('已开始下载');
   } catch (err: any) {
     logger.error('[PdfViewer]', 'PDF下载失败', err);

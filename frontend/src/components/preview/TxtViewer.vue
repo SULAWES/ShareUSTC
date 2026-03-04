@@ -20,6 +20,8 @@ import logger from '../../utils/logger';
 
 const props = defineProps<{
   resourceId: string;
+  resourceType?: string;
+  resourceTitle?: string;
 }>();
 
 const loading = ref(true);
@@ -35,7 +37,12 @@ const loadContent = async () => {
     logger.debug('[TxtViewer]', `获取到预览信息 | storageType=${previewInfo.storageType}, directAccess=${previewInfo.directAccess}`);
 
     // 获取内容（会自动使用缓存）
-    const blob = await getResourcePreviewContent(props.resourceId, previewInfo);
+    const blob = await getResourcePreviewContent(props.resourceId, previewInfo, {
+      resourceDetail: props.resourceTitle && props.resourceType ? {
+        title: props.resourceTitle,
+        resourceType: props.resourceType
+      } : undefined
+    });
     const text = await blob.text();
 
     // 限制显示长度（防止超大文本文件）

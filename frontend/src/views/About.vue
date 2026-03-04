@@ -210,10 +210,10 @@
                 </a>
               </div>
               <div class="uploader-info">
-                <span class="uploader-label">上传者（暂无）：</span>
-                <router-link to="/user/404" class="uploader-link">
+                <span class="uploader-label">上传者：</span>
+                <router-link to="/user/b3a171bf-e3cb-4e16-bec0-a69b5b5e54bc" class="uploader-link">
                   <el-icon><User /></el-icon>
-                  暂无
+                  share_feixu_site
                 </router-link>
               </div>
             </div>
@@ -432,9 +432,9 @@ const sourceDetails: Record<string, SourceDetail> = {
     name: 'share.feixu.site',
     description: '《我的科大》网站的课程资源',
     contents: '部分资料',
-    license: '已经积极联系网站开发者sxl学长，尚未收到回复。如有侵权请联系我们下架。',
-    updateTime: '暂未上传，已爬取数据截至2026年3月3日22:25',
-    modifications: '移除了 ./数学类/实分析/2021实分析H期末考试.pdf 这份空文件，疑似是《我的科大》维护者未能成功上传。'
+    license: '已经获得网站维护者孙旭磊学长的授权。如有侵权请联系我们下架。',
+    updateTime: '2026年3月4日晚上传，已爬取数据截至2026年3月3日22:25',
+    modifications: '移除了部分过于陈旧的资料；移除了部分过时的实验/作业/题库类的资料；移除了出版物；将部分大压缩包拆分后重新压缩，将部分不受支持的文件打包后上传；移除了 ./数学类/实分析/2021实分析H期末考试.pdf 这份空文件，疑似是《我的科大》维护者未能成功上传。'
   },
 };
 

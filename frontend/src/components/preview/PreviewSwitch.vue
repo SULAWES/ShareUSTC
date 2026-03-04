@@ -4,18 +4,26 @@
       v-if="previewType === 'image'"
       :resource-id="resourceId"
       :alt-text="resourceTitle"
+      :resource-type="resourceType"
+      :resource-title="resourceTitle"
     />
     <PdfViewer
       v-else-if="previewType === 'pdf'"
       :resource-id="resourceId"
+      :resource-type="resourceType"
+      :resource-title="resourceTitle"
     />
     <MarkdownViewer
       v-else-if="previewType === 'markdown'"
       :resource-id="resourceId"
+      :resource-type="resourceType"
+      :resource-title="resourceTitle"
     />
     <TxtViewer
       v-else-if="previewType === 'txt'"
       :resource-id="resourceId"
+      :resource-type="resourceType"
+      :resource-title="resourceTitle"
     />
     <div v-else class="unsupported-preview">
       <el-icon class="unsupported-icon"><Document /></el-icon>

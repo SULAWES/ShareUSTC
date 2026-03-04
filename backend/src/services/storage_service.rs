@@ -158,15 +158,28 @@ impl LocalStorage {
 
         let path = Path::new(key_or_path);
 
-        // 如果传入的是绝对路径或已包含 base_path，直接使用
-        if path.is_absolute() || path.starts_with(&self.base_path) {
+        // 尝试将 base_path 转换为绝对路径（尽可能 canonicalize）
+        let base_absolute = self.base_path.canonicalize().unwrap_or_else(|_| {
+            // 如果无法 canonicalize（目录不存在），使用绝对路径
+            if self.base_path.is_absolute() {
+                self.base_path.clone()
+            } else {
+                // 将相对路径转换为绝对路径
+                std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join(&self.base_path)
+            }
+        });
+
+        // 如果传入的是绝对路径，直接使用
+        if path.is_absolute() {
             // 使用 canonicalize 确保路径在允许的范围内
             let canonical_path = path.canonicalize().map_err(|e| {
                 StorageError::Validation(format!("无法解析文件路径: {}", e))
             })?;
 
             // 确保最终路径在基础目录内，防止路径遍历攻击
-            if !canonical_path.starts_with(&self.base_path) {
+            if !canonical_path.starts_with(&base_absolute) {
                 return Err(StorageError::Validation(
                     "文件路径超出允许的范围".to_string(),
                 ));
@@ -175,14 +188,29 @@ impl LocalStorage {
             return Ok(canonical_path);
         }
 
-        let key = key_or_path.trim_start_matches('/');
-        let full_path = self.base_path.join(key);
+        // 处理相对路径：去掉开头的 "./" 以便正确拼接
+        let key = key_or_path
+            .trim_start_matches('/')
+            .trim_start_matches("./");
+
+        // 检查路径是否已经包含 base_path 的前缀（处理存储时返回的完整路径）
+        let path_str = key_or_path;
+        let base_str = self.base_path.to_string_lossy();
+
+        // 如果路径以 base_path 开头（如 ./uploads/resources/xxx.pdf），提取相对部分
+        let relative_key = if path_str.starts_with(base_str.as_ref()) {
+            path_str[base_str.len()..].trim_start_matches('/').trim_start_matches("./")
+        } else {
+            key
+        };
+
+        let full_path = base_absolute.join(relative_key);
 
         // 再次检查拼接后的路径是否在基础目录内
         // 使用 canonicalize 解析任何可能的符号链接或相对路径
         match full_path.canonicalize() {
             Ok(canonical) => {
-                if !canonical.starts_with(&self.base_path) {
+                if !canonical.starts_with(&base_absolute) {
                     return Err(StorageError::Validation(
                         "文件路径超出允许的范围".to_string(),
                     ));
@@ -191,20 +219,14 @@ impl LocalStorage {
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 // 文件不存在时无法 canonicalize，手动检查路径
-                // 使用绝对路径并确保没有跳出 base_path
-                let normalized = self.base_path.canonicalize().map_err(|e| {
-                    StorageError::Config(format!("无法解析基础目录: {}", e))
-                })?;
-                let target = normalized.join(key);
-
                 // 检查规范化后的路径是否以基础目录开头
-                if !target.starts_with(&normalized) {
+                if !full_path.starts_with(&base_absolute) {
                     return Err(StorageError::Validation(
                         "文件路径超出允许的范围".to_string(),
                     ));
                 }
 
-                Ok(target)
+                Ok(full_path)
             }
             Err(e) => Err(StorageError::Io(format!("解析文件路径失败: {}", e))),
         }
@@ -213,11 +235,20 @@ impl LocalStorage {
     fn relative_key(&self, key_or_path: &str) -> String {
         let path = Path::new(key_or_path);
 
+        // 尝试 strip_prefix，处理绝对路径和相对路径
         if let Ok(relative) = path.strip_prefix(&self.base_path) {
             return relative.to_string_lossy().replace('\\', "/");
         }
 
-        key_or_path.trim_start_matches('/').to_string()
+        // 处理存储的相对路径（如 ./uploads/resources/xxx.pdf）
+        let base_str = self.base_path.to_string_lossy();
+        if key_or_path.starts_with(base_str.as_ref()) {
+            let relative = &key_or_path[base_str.len()..];
+            return relative.trim_start_matches('/').trim_start_matches("./").to_string();
+        }
+
+        // 处理 ./ 开头的路径
+        key_or_path.trim_start_matches('/').trim_start_matches("./").to_string()
     }
 }
 

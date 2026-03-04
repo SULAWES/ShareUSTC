@@ -61,6 +61,8 @@ import logger from '../../utils/logger';
 const props = defineProps<{
   resourceId: string;
   altText?: string;
+  resourceType?: string;
+  resourceTitle?: string;
 }>();
 
 const loading = ref(true);
@@ -80,7 +82,12 @@ const loadImage = async () => {
     logger.debug('[ImageViewer]', `获取到预览信息 | storageType=${previewInfo.storageType}, directAccess=${previewInfo.directAccess}`);
 
     // 获取内容（会自动使用缓存）
-    const blob = await getResourcePreviewContent(props.resourceId, previewInfo);
+    const blob = await getResourcePreviewContent(props.resourceId, previewInfo, {
+      resourceDetail: props.resourceTitle && props.resourceType ? {
+        title: props.resourceTitle,
+        resourceType: props.resourceType
+      } : undefined
+    });
     logger.debug('[ImageViewer]', `获取到blob | type=${blob.type}, size=${blob.size}`);
 
     // 确保blob类型正确
