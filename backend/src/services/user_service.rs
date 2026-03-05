@@ -120,14 +120,32 @@ impl UserService {
     /// * `user_id` - 用户ID
     /// * `req` - 更新请求
     /// * `is_verified` - 是否已实名认证，未实名用户不能修改个人简介
+    /// * `allow_username_change` - 是否允许修改用户名
+    /// * `allow_email_change` - 是否允许修改邮箱
     pub async fn update_profile(
         pool: &PgPool,
         user_id: Uuid,
         req: UpdateProfileRequest,
         is_verified: bool,
+        allow_username_change: bool,
+        allow_email_change: bool,
     ) -> Result<UserInfo, UserError> {
         // 验证请求
         req.validate().map_err(|e| UserError::ValidationError(e))?;
+
+        // 检查是否允许修改用户名
+        if !allow_username_change && req.username.is_some() {
+            return Err(UserError::ValidationError(
+                "本站点不允许修改用户名".to_string(),
+            ));
+        }
+
+        // 检查是否允许修改邮箱
+        if !allow_email_change && req.email.is_some() {
+            return Err(UserError::ValidationError(
+                "本站点不允许修改邮箱".to_string(),
+            ));
+        }
 
         // 检查用户名是否已被使用
         if let Some(ref username) = req.username {
@@ -148,15 +166,39 @@ impl UserService {
         // 获取当前用户信息，然后更新
         let current_user = Self::get_current_user(pool, user_id).await?;
 
-        // 构建更新查询 - 使用简单的字符串拼接
+        // 构建更新查询
         let username = req.username.unwrap_or(current_user.username);
+        // 处理个人简介：空字符串转为 None
         // 未实名用户不能修改个人简介，保持原有值
         let bio = if is_verified {
-            req.bio.or(current_user.bio)
+            req.bio.filter(|b| !b.trim().is_empty()).or(current_user.bio)
         } else {
             current_user.bio
         };
-        let email = req.email.or(current_user.email);
+        // 处理邮箱：空字符串转为 None，并进行唯一性检查
+        let email = match req.email {
+            Some(ref e) if e.trim().is_empty() => None, // 空字符串转为 None
+            Some(e) => {
+                // 检查邮箱是否已被其他用户使用
+                let trimmed_email = e.trim().to_lowercase();
+                if !trimmed_email.is_empty() {
+                    let existing: Option<(Uuid,)> = sqlx::query_as(
+                        "SELECT id FROM users WHERE email = $1 AND id != $2 AND is_active = true",
+                    )
+                    .bind(&trimmed_email)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await
+                    .map_err(|e| UserError::DatabaseError(e.to_string()))?;
+
+                    if existing.is_some() {
+                        return Err(UserError::UserExists("邮箱已被其他用户使用".to_string()));
+                    }
+                }
+                Some(trimmed_email)
+            }
+            None => current_user.email,
+        };
         let social_links = req.social_links;
 
         let updated_user: User = sqlx::query_as::<_, User>(

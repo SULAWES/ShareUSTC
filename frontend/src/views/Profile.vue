@@ -255,10 +255,22 @@
           <el-card class="settings-card-wide">
             <el-form :model="profileForm" label-width="100px" class="settings-form-wide">
               <el-form-item label="用户名">
-                <el-input v-model="profileForm.username" />
+                <el-input
+                  v-model="profileForm.username"
+                  :disabled="!siteConfigStore.allowUsernameChange"
+                />
+                <p v-if="!siteConfigStore.allowUsernameChange" class="form-hint" style="color: #909399;">
+                  不允许修改用户名
+                </p>
               </el-form-item>
               <el-form-item label="邮箱">
-                <el-input v-model="profileForm.email" />
+                <el-input
+                  v-model="profileForm.email"
+                  :disabled="!siteConfigStore.allowEmailChange"
+                />
+                <p v-if="!siteConfigStore.allowEmailChange" class="form-hint" style="color: #909399;">
+                  不允许修改邮箱
+                </p>
               </el-form-item>
               <el-form-item label="个人简介" class="bio-form-item-wide">
                 <!-- 未实名用户显示提示信息 -->
@@ -361,6 +373,7 @@ import { ref, reactive, onMounted, watch, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import MarkdownIt from 'markdown-it';
 import { useAuthStore } from '../stores/auth';
+import { useSiteConfigStore } from '../stores/siteConfig';
 import logger from '../utils/logger';
 import { getCurrentUser, updateProfile, verifyUser, getUserProfile } from '../api/user';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
@@ -392,7 +405,14 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 const authStore = useAuthStore();
+const siteConfigStore = useSiteConfigStore();
 const router = useRouter();
+
+// 页面加载时获取站点配置
+onMounted(() => {
+  refreshUserInfo();
+  siteConfigStore.loadConfig();
+});
 
 // 跳转到我的公开主页
 const goToMyHomepage = () => {
@@ -640,7 +660,25 @@ const handleMenuSelect = (index: string) => {
 const saveProfile = async () => {
   saving.value = true;
   try {
-    const updatedUser = await updateProfile(profileForm);
+    // 构建请求数据，根据站点配置决定是否发送字段
+    const requestData: UpdateProfileRequest = {};
+
+    // 只有当允许修改用户名时才发送 username 字段
+    if (siteConfigStore.allowUsernameChange) {
+      requestData.username = profileForm.username;
+    }
+
+    // 只有当允许修改邮箱时才发送 email 字段
+    if (siteConfigStore.allowEmailChange) {
+      requestData.email = profileForm.email;
+    }
+
+    // 只有实名用户才发送 bio，且空字符串转为 undefined（不发送）
+    if (authStore.isVerified && profileForm.bio?.trim()) {
+      requestData.bio = profileForm.bio.trim();
+    }
+
+    const updatedUser = await updateProfile(requestData);
     // 使用 store 的方法更新用户信息，确保全局状态同步
     authStore.updateUserInfo(updatedUser);
     ElMessage.success('资料更新成功');
@@ -698,10 +736,6 @@ const refreshUserInfo = async () => {
     logger.error('[Profile]', '刷新用户信息失败', error);
   }
 };
-
-onMounted(() => {
-  refreshUserInfo();
-});
 </script>
 
 <style scoped>

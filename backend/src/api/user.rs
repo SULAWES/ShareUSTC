@@ -9,7 +9,20 @@ use crate::utils::{
 };
 use actix_web::cookie::{time::Duration as CookieDuration, Cookie, SameSite};
 use actix_web::{get, post, put, web, HttpRequest, HttpResponse, Responder};
+use serde::Serialize;
 use uuid::Uuid;
+
+/// 站点公开配置响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteConfigResponse {
+    /// 注册时是否强制要求邮箱
+    pub require_email_on_register: bool,
+    /// 是否允许用户修改用户名
+    pub allow_username_change: bool,
+    /// 是否允许用户修改邮箱
+    pub allow_email_change: bool,
+}
 
 /// Cookie 名称常量
 const ACCESS_TOKEN_COOKIE: &str = "access_token";
@@ -75,13 +88,24 @@ pub async fn update_profile(
         || user.role == crate::models::UserRole::Admin;
 
     // 未实名用户尝试修改个人简介时，返回错误
-    if !is_verified && req.bio.is_some() {
+    // 检查 bio 是否为有效值（非空字符串且非空白）
+    let bio_has_value = req.bio.as_ref().map_or(false, |b| !b.trim().is_empty());
+    if !is_verified && bio_has_value {
         return forbidden("实名认证后才可修改个人简介");
     }
 
     log::info!("[User] 更新用户资料 | user_id={}", user.id);
 
-    match UserService::update_profile(&state.pool, user.id, req.into_inner(), is_verified).await {
+    match UserService::update_profile(
+        &state.pool,
+        user.id,
+        req.into_inner(),
+        is_verified,
+        state.allow_username_change,
+        state.allow_email_change,
+    )
+    .await
+    {
         Ok(user_info) => {
             log::info!("[User] 用户资料更新成功 | user_id={}", user.id);
 
@@ -246,11 +270,22 @@ pub async fn get_user_homepage(
     }
 }
 
+/// 获取站点公开配置（公开接口，无需认证）
+#[get("/config")]
+pub async fn get_site_config(state: web::Data<AppState>) -> impl Responder {
+    HttpResponse::Ok().json(SiteConfigResponse {
+        require_email_on_register: state.require_email_on_register,
+        allow_username_change: state.allow_username_change,
+        allow_email_change: state.allow_email_change,
+    })
+}
+
 /// 配置用户路由
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(get_current_user)
         .service(update_profile)
         .service(verify_user)
         .service(get_user_homepage) // 必须在 get_user_profile 之前注册
-        .service(get_user_profile);
+        .service(get_user_profile)
+        .service(get_site_config);
 }

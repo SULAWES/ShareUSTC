@@ -25,6 +25,12 @@ pub struct Config {
     pub oss_sts_session_duration: u64,
     pub oss_key_prefix: String,
     pub oss_signed_url_expiry: u64,
+    /// 注册时是否强制要求邮箱
+    pub require_email_on_register: bool,
+    /// 是否允许用户修改用户名
+    pub allow_username_change: bool,
+    /// 是否允许用户修改邮箱
+    pub allow_email_change: bool,
 }
 
 impl Config {
@@ -114,6 +120,16 @@ impl Config {
                 .ok()
                 .and_then(|value| value.parse::<u64>().ok())
                 .unwrap_or(600),
+            // 用户配置项
+            require_email_on_register: env::var("REGISTER_REQUIRE_EMAIL")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            allow_username_change: env::var("ALLOW_USERNAME_CHANGE")
+                .map(|v| v != "false" && v != "0")
+                .unwrap_or(true),
+            allow_email_change: env::var("ALLOW_EMAIL_CHANGE")
+                .map(|v| v != "false" && v != "0")
+                .unwrap_or(true),
         }
     }
 }

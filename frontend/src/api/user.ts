@@ -55,6 +55,13 @@ export interface UserHomepageQuery {
   perPage?: number;
 }
 
+// 站点公开配置
+export interface SiteConfig {
+  requireEmailOnRegister: boolean;
+  allowUsernameChange: boolean;
+  allowEmailChange: boolean;
+}
+
 // 获取当前用户信息
 export const getCurrentUser = (): Promise<User> => {
   return request.get('/users/me');
@@ -79,4 +86,9 @@ export const getUserProfile = (userId: string): Promise<UserProfile> => {
 // 获取用户主页数据（包含资源列表）
 export const getUserHomepage = (userId: string, query?: UserHomepageQuery): Promise<UserHomepage> => {
   return request.get(`/users/${userId}/homepage`, { params: query });
+};
+
+// 获取站点公开配置
+export const getSiteConfig = (): Promise<SiteConfig> => {
+  return request.get('/config');
 };

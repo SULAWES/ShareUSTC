@@ -24,10 +24,10 @@
           />
         </el-form-item>
 
-        <el-form-item label="邮箱 (可选)" prop="email">
+        <el-form-item :label="emailLabel" prop="email">
           <el-input
             v-model="form.email"
-            placeholder="请输入邮箱"
+            :placeholder="siteConfigStore.requireEmailOnRegister ? '请输入邮箱（必填）' : '请输入邮箱'"
             :prefix-icon="Message"
             size="large"
             autocomplete="off"
@@ -95,16 +95,41 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue';
+import { ref, reactive, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { User, Lock, Message } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
+import { useSiteConfigStore } from '../../stores/siteConfig';
 import type { FormInstance, FormRules } from 'element-plus';
 import logger from '../../utils/logger';
 
 const router = useRouter();
 const authStore = useAuthStore();
+const siteConfigStore = useSiteConfigStore();
 const formRef = ref<FormInstance>();
+
+// 邮箱标签显示文本
+const emailLabel = computed(() => {
+  return siteConfigStore.requireEmailOnRegister ? '邮箱' : '邮箱 (可选)';
+});
+
+// 邮箱验证规则
+const emailRules = computed(() => {
+  if (siteConfigStore.requireEmailOnRegister) {
+    return [
+      { required: true, message: '请输入邮箱', trigger: 'blur' },
+      { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
+    ];
+  }
+  return [
+    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
+  ];
+});
+
+// 页面加载时获取站点配置
+onMounted(() => {
+  siteConfigStore.loadConfig();
+});
 
 const form = reactive({
   username: '',
@@ -153,14 +178,11 @@ const validateConfirmPassword = (_rule: any, value: string, callback: any) => {
   }
 };
 
-const rules: FormRules = {
+const baseRules: FormRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 3, max: 50, message: '用户名长度在 3 到 50 个字符', trigger: 'blur' },
     { pattern: /^[a-zA-Z0-9_]+$/, message: '用户名只能包含字母、数字和下划线', trigger: 'blur' }
-  ],
-  email: [
-    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
@@ -171,6 +193,12 @@ const rules: FormRules = {
     { validator: validateConfirmPassword, trigger: 'blur' }
   ]
 };
+
+// 动态规则
+const rules = computed<FormRules>(() => ({
+  ...baseRules,
+  email: emailRules.value
+}));
 
 const handleSubmit = async () => {
   if (!formRef.value) return;

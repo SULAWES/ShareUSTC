@@ -244,6 +244,9 @@ async fn main() -> std::io::Result<()> {
         config.jwt_secret.clone(),
         config.cookie_secure,
         storage.clone(),
+        config.require_email_on_register,
+        config.allow_username_change,
+        config.allow_email_change,
     ));
 
     // 启动文件哈希计算后台任务
@@ -305,6 +308,8 @@ async fn main() -> std::io::Result<()> {
             // 排除 /api/users/me 和 /api/users/verify
             PublicPathRule::with_methods("/api/users", vec![Method::GET])
                 .exclude(vec!["/api/users/me", "/api/users/verify"]),
+            // /api/config 公开（站点配置）
+            PublicPathRule::with_methods("/api/config", vec![Method::GET]),
             // /api/teachers 和 /api/courses GET 方法公开（供游客筛选资源）
             PublicPathRule::with_methods("/api/teachers", vec![Method::GET]),
             PublicPathRule::with_methods("/api/courses", vec![Method::GET]),

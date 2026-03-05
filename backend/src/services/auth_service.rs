@@ -43,7 +43,15 @@ impl AuthService {
         pool: &PgPool,
         jwt_secret: &str,
         req: RegisterRequest,
+        require_email: bool,
     ) -> Result<AuthResponse, AuthError> {
+        // 检查是否强制要求邮箱
+        if require_email && req.email.is_none() {
+            return Err(AuthError::ValidationError(
+                "本站点要求注册时必须提供邮箱".to_string(),
+            ));
+        }
+
         // 验证请求
         req.validate().map_err(|e| AuthError::ValidationError(e))?;
 

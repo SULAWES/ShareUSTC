@@ -36,6 +36,12 @@ pub struct AppState {
     pub jwt_secret: String,
     pub cookie_secure: bool,
     pub storage: Arc<dyn StorageBackend>,
+    /// 注册时是否强制要求邮箱
+    pub require_email_on_register: bool,
+    /// 是否允许用户修改用户名
+    pub allow_username_change: bool,
+    /// 是否允许用户修改邮箱
+    pub allow_email_change: bool,
 }
 
 impl AppState {
@@ -44,12 +50,18 @@ impl AppState {
         jwt_secret: String,
         cookie_secure: bool,
         storage: Arc<dyn StorageBackend>,
+        require_email_on_register: bool,
+        allow_username_change: bool,
+        allow_email_change: bool,
     ) -> Self {
         Self {
             pool,
             jwt_secret,
             cookie_secure,
             storage,
+            require_email_on_register,
+            allow_username_change,
+            allow_email_change,
         }
     }
 }
@@ -92,12 +104,15 @@ mod tests {
             jwt_secret: String,
             cookie_secure: bool,
             storage: Arc<dyn StorageBackend>,
+            require_email_on_register: bool,
+            allow_username_change: bool,
+            allow_email_change: bool,
         ) -> AppState {
-            AppState::new(pool, jwt_secret, cookie_secure, storage)
+            AppState::new(pool, jwt_secret, cookie_secure, storage, require_email_on_register, allow_username_change, allow_email_change)
         }
 
         // 验证函数指针类型
-        let _: fn(PgPool, String, bool, Arc<dyn StorageBackend>) -> AppState = _check_app_state_new_signature;
+        let _: fn(PgPool, String, bool, Arc<dyn StorageBackend>, bool, bool, bool) -> AppState = _check_app_state_new_signature;
 
         // 测试通过，类型检查完成
         assert!(true);
