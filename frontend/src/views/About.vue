@@ -277,6 +277,13 @@
         <h2>更新日志</h2>
         <div class="changelog-list">
           <div class="changelog-item">
+            <div class="changelog-date">2026-03-05</div>
+            <div class="changelog-content">
+              <span class="changelog-tag tag-improve">功能优化</span>
+              <span class="changelog-text">新增收藏夹打包下载的oss直传和浏览器打包</span>
+            </div>
+          </div>
+          <div class="changelog-item">
             <div class="changelog-date">2026-02-28</div>
             <div class="changelog-content">
               <span class="changelog-tag tag-fix">问题修复</span>

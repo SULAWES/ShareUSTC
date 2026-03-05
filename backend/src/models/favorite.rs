@@ -93,7 +93,9 @@ pub struct FavoriteResourceItem {
     pub tags: Option<Vec<String>>,
     pub file_size: Option<i64>,
     pub added_at: String,
+    pub updated_at: String,
     pub stats: FavoriteResourceStats,
+    pub storage_type: String,
 }
 
 /// 收藏夹资源统计 DTO

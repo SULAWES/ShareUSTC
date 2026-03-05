@@ -10,8 +10,10 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
+    "@types/jszip": "^3.4.0",
     "axios": "^1.13.4",
     "element-plus": "^2.13.2",
+    "jszip": "^3.10.1",
     "markdown-it": "^14.1.0",
     "md-editor-v3": "^6.3.1",
     "pdfjs-dist": "^5.4.624",

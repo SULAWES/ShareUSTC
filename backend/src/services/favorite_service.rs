@@ -164,6 +164,8 @@ impl FavoriteService {
                 r.category,
                 r.tags,
                 r.file_size,
+                COALESCE(r.storage_type, 'local') as storage_type,
+                r.updated_at,
                 fr.added_at,
                 rs.views,
                 rs.downloads,
@@ -257,6 +259,14 @@ impl FavoriteService {
                                 .format("%Y-%m-%dT%H:%M:%S%.3fZ")
                                 .to_string()
                         }),
+                    updated_at: row
+                        .updated_at
+                        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string())
+                        .unwrap_or_else(|| {
+                            chrono::Local::now()
+                                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                                .to_string()
+                        }),
                     stats: FavoriteResourceStats {
                         views: row.views.unwrap_or(0),
                         downloads: row.downloads.unwrap_or(0),
@@ -268,6 +278,7 @@ impl FavoriteService {
                         avg_detail_level,
                         rating_count,
                     },
+                    storage_type: row.storage_type.unwrap_or_else(|| "local".to_string()),
                 }
             })
             .collect();

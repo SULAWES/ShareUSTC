@@ -1,4 +1,4 @@
-import type { ResourceStats } from './resource';
+import type { ResourceStats, StorageType } from './resource';
 
 // 收藏夹基础信息
 export interface Favorite {
@@ -24,7 +24,9 @@ export interface FavoriteResourceItem {
   tags?: string[];
   fileSize?: number;
   addedAt: string;
+  updatedAt: string; // 资源最后更新时间，用于缓存校验
   stats: ResourceStats;
+  storageType: StorageType;
 }
 
 // 收藏夹详情
