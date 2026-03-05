@@ -13,7 +13,7 @@
 
           <div class="setting-item">
             <div class="setting-info">
-              <div class="setting-label">用户指南弹窗</div>
+              <div class="setting-label">首页用户指南弹窗</div>
               <div class="setting-desc">
                 进入首页时显示用户指南
               </div>
@@ -24,6 +24,23 @@
                 active-text="显示"
                 inactive-text="隐藏"
                 @change="handleUserGuideChange"
+              />
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">资源页面指南弹窗</div>
+              <div class="setting-desc">
+                进入资源列表页面时显示使用指南
+              </div>
+            </div>
+            <div class="setting-control">
+              <el-switch
+                v-model="showResourceGuide"
+                active-text="显示"
+                inactive-text="隐藏"
+                @change="handleResourceGuideChange"
               />
             </div>
           </div>
@@ -113,6 +130,7 @@ import logger from '../utils/logger';
 
 // 用户指南弹窗 LocalStorage 键名
 const GUIDE_MODAL_KEY = 'userGuideModalClosed';
+const RESOURCE_GUIDE_MODAL_KEY = 'resourceGuideModalClosed';
 
 // 缓存状态
 const loading = ref(false);
@@ -206,10 +224,12 @@ const handleClearAll = async () => {
 onMounted(() => {
   refreshStats();
   loadUserGuideSetting();
+  loadResourceGuideSetting();
 });
 
 // 用户指南设置
 const showUserGuide = ref(true);
+const showResourceGuide = ref(true);
 
 // 加载用户指南设置
 const loadUserGuideSetting = () => {
@@ -229,23 +249,62 @@ const loadUserGuideSetting = () => {
   }
 };
 
+// 加载资源页面指南设置
+const loadResourceGuideSetting = () => {
+  try {
+    const stored = localStorage.getItem(RESOURCE_GUIDE_MODAL_KEY);
+    if (stored) {
+      const data = JSON.parse(stored);
+      // 如果设置了永久关闭，则开关为 false（不显示）
+      showResourceGuide.value = !data.permanent;
+    } else {
+      // 没有设置时默认显示
+      showResourceGuide.value = true;
+    }
+  } catch (e) {
+    logger.warn('[Settings]', 'Failed to parse resource guide modal setting:', e);
+    showResourceGuide.value = true;
+  }
+};
+
 // 处理用户指南设置变化
 const handleUserGuideChange = (value: boolean) => {
   try {
     if (value) {
       // 开启显示：清除永久关闭设置
       localStorage.removeItem(GUIDE_MODAL_KEY);
-      ElMessage.success('已开启用户指南弹窗');
+      ElMessage.success('已开启首页用户指南弹窗');
     } else {
       // 关闭显示：设置永久关闭
       localStorage.setItem(GUIDE_MODAL_KEY, JSON.stringify({
         permanent: true,
         timestamp: Date.now()
       }));
-      ElMessage.success('已永久关闭用户指南弹窗');
+      ElMessage.success('已永久关闭首页用户指南弹窗');
     }
   } catch (e) {
     logger.error('[Settings]', 'Failed to save user guide modal setting:', e);
+    ElMessage.error('设置保存失败');
+  }
+};
+
+// 处理资源页面指南设置变化
+const handleResourceGuideChange = (value: boolean) => {
+  try {
+    if (value) {
+      // 开启显示：清除永久关闭设置
+      localStorage.removeItem(RESOURCE_GUIDE_MODAL_KEY);
+      ElMessage.success('已开启资源页面指南弹窗');
+    } else {
+      // 关闭显示：设置永久关闭
+      localStorage.setItem(RESOURCE_GUIDE_MODAL_KEY, JSON.stringify({
+        permanent: true,
+        timestamp: Date.now()
+      }));
+      ElMessage.success('已永久关闭资源页面指南弹窗');
+    }
+  } catch (e) {
+    logger.error('[Settings]', 'Failed to save resource guide modal setting:', e);
     ElMessage.error('设置保存失败');
   }
 };

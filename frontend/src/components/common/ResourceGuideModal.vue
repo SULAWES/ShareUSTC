@@ -1,11 +1,11 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="用户指南"
+    title="资源页面使用指南"
     width="560px"
     :close-on-click-modal="false"
     :close-on-press-escape="true"
-    class="user-guide-modal"
+    class="resource-guide-modal"
     align-center
   >
     <div class="guide-content">
@@ -14,52 +14,55 @@
         <div class="guide-item">
           <div class="item-number">1</div>
           <div class="item-text">
-            <span>未登录用户可以查看和下载</span>
-            <span class="highlight-text">所有资源</span>
-            <span>，登录用户可创建收藏夹，</span>
-            <span class="highlight-text">一键打包下载</span>
+            <span>可输入</span>
+            <span class="highlight-text">课程/教师名</span>
+            <span>进行搜索，支持多选</span>
+            <!-- <span class="highlight-text red-text">这样是红色</span> -->
           </div>
         </div>
 
         <div class="guide-item">
           <div class="item-number">2</div>
           <div class="item-text">
-            <span>欢迎</span>
-            <span class="highlight-text">上传资源</span>
-            <span>，或为资源</span>
-            <span class="highlight-text">打分</span>
-            <span>（均需要</span>
-            <span class="highlight-text">注册</span>
-            <span>）</span>
+            <span>数据来源于教务处公布的近三个学期的课程信息(26春、25秋、25夏)</span>
           </div>
         </div>
 
         <div class="guide-item">
           <div class="item-number">3</div>
           <div class="item-text">
-            <span class="highlight-text">强烈建议</span>
-            <span>使用</span>
-            <span class="highlight-text">电脑</span>
-            <span>的</span>
-            <span class="highlight-text red-text">Chrome, Edge</span>
-            <span>浏览器访问，手机端UI正在适配中</span>
+            <span class="highlight-text">登录</span>
+            <span>后可在此页面将资源</span>
+            <span class="highlight-text">一键加入</span>
+            <span>收藏夹</span>
           </div>
         </div>
 
         <div class="guide-item">
           <div class="item-number">4</div>
           <div class="item-text">
-            <span>所有资源均为</span>
-            <span class="highlight-text">无偿</span>
-            <span>分享，禁止用于任何形式的盈利活动</span>
+            <span>使用</span>
+            <span class="highlight-text">鼠标中键</span>
+            <span>可以在新页面打开资源详情，不会丢失搜索词条</span>
+            <!-- <span class="highlight-text red-text">这样是红色</span> -->
+          </div>
+        </div>
+
+        <div class="guide-item">
+          <div class="item-number">5</div>
+          <div class="item-text">
+            <span>部分资源</span>
+            <span class="highlight-text">课程划分可能有误</span>
+            <span>，请勾选所有相关课程。如选择 数学分析 课程资料时，可以同时勾选 “数学分析【未指定】”、“数学分析(B1)” 等多个选项</span>
+            <!-- <span class="highlight-text red-text">这样是红色</span> -->
           </div>
         </div>
 
       </div>
 
       <div class="guide-footer-hint">
-        <el-icon><CircleCheck /></el-icon>
-        <span>注册简单快捷，无需邮箱验证</span>
+        <el-icon><Collection /></el-icon>
+        <span>创建收藏夹，高效管理你的学习资源</span>
       </div>
     </div>
 
@@ -82,7 +85,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { CircleCheck } from '@element-plus/icons-vue';
+import { Collection } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import logger from '../../utils/logger';
 
@@ -91,12 +94,12 @@ const visible = ref(false);
 const dontShowAgain = ref(false);
 
 // LocalStorage 键名
-const GUIDE_MODAL_KEY = 'userGuideModalClosed';
+const RESOURCE_GUIDE_MODAL_KEY = 'resourceGuideModalClosed';
 
 // 检查是否应该显示弹窗
 function shouldShowModal(): boolean {
   try {
-    const stored = localStorage.getItem(GUIDE_MODAL_KEY);
+    const stored = localStorage.getItem(RESOURCE_GUIDE_MODAL_KEY);
     if (stored) {
       const data = JSON.parse(stored);
       // 检查是否是永久关闭
@@ -106,7 +109,7 @@ function shouldShowModal(): boolean {
     }
   } catch (e) {
     // 如果解析失败，默认显示
-    logger.warn('[UserGuideModal]', 'Failed to parse user guide modal setting:', e);
+    logger.warn('[ResourceGuideModal]', 'Failed to parse resource guide modal setting:', e);
   }
   return true;
 }
@@ -123,13 +126,13 @@ function handleClose() {
   // 如果勾选了"不再显示"，则保存到 localStorage
   if (dontShowAgain.value) {
     try {
-      localStorage.setItem(GUIDE_MODAL_KEY, JSON.stringify({
+      localStorage.setItem(RESOURCE_GUIDE_MODAL_KEY, JSON.stringify({
         permanent: true,
         timestamp: Date.now()
       }));
-      ElMessage.success('已永久关闭用户指南弹窗，可在设置中重新开启');
+      ElMessage.success('已永久关闭资源页面指南弹窗，可在设置中重新开启');
     } catch (e) {
-      logger.error('[UserGuideModal]', 'Failed to save user guide modal setting:', e);
+      logger.error('[ResourceGuideModal]', 'Failed to save resource guide modal setting:', e);
     }
   }
   visible.value = false;
@@ -138,13 +141,13 @@ function handleClose() {
 // 获取当前设置状态（供设置页面使用）
 function isPermanentlyClosed(): boolean {
   try {
-    const stored = localStorage.getItem(GUIDE_MODAL_KEY);
+    const stored = localStorage.getItem(RESOURCE_GUIDE_MODAL_KEY);
     if (stored) {
       const data = JSON.parse(stored);
       return data.permanent === true;
     }
   } catch (e) {
-    logger.warn('[UserGuideModal]', 'Failed to parse user guide modal setting:', e);
+    logger.warn('[ResourceGuideModal]', 'Failed to parse resource guide modal setting:', e);
   }
   return false;
 }
@@ -153,16 +156,16 @@ function isPermanentlyClosed(): boolean {
 function setPermanentlyClosed(closed: boolean): void {
   try {
     if (closed) {
-      localStorage.setItem(GUIDE_MODAL_KEY, JSON.stringify({
+      localStorage.setItem(RESOURCE_GUIDE_MODAL_KEY, JSON.stringify({
         permanent: true,
         timestamp: Date.now()
       }));
     } else {
-      // 清除永久关闭设置，下次进入首页会显示
-      localStorage.removeItem(GUIDE_MODAL_KEY);
+      // 清除永久关闭设置，下次进入资源页面会显示
+      localStorage.removeItem(RESOURCE_GUIDE_MODAL_KEY);
     }
   } catch (e) {
-    logger.error('[UserGuideModal]', 'Failed to save user guide modal setting:', e);
+    logger.error('[ResourceGuideModal]', 'Failed to save resource guide modal setting:', e);
   }
 }
 
@@ -183,23 +186,23 @@ defineExpose({
 </script>
 
 <style scoped>
-.user-guide-modal :deep(.el-dialog__header) {
+.resource-guide-modal :deep(.el-dialog__header) {
   text-align: center;
   padding: 24px 20px 16px;
   border-bottom: 1px solid var(--el-border-color-light);
 }
 
-.user-guide-modal :deep(.el-dialog__title) {
+.resource-guide-modal :deep(.el-dialog__title) {
   font-size: 20px;
   font-weight: 600;
   color: var(--el-text-color-primary);
 }
 
-.user-guide-modal :deep(.el-dialog__body) {
+.resource-guide-modal :deep(.el-dialog__body) {
   padding: 24px 28px;
 }
 
-.user-guide-modal :deep(.el-dialog__footer) {
+.resource-guide-modal :deep(.el-dialog__footer) {
   border-top: 1px solid var(--el-border-color-light);
   padding: 16px 24px;
 }
@@ -268,9 +271,9 @@ defineExpose({
   align-items: center;
   gap: 6px;
   padding: 5px 15px;
-  background-color: #f0f9eb;
+  background-color: #ecf5ff;
   border-radius: 20px;
-  color: #67c23a;
+  color: #409eff;
   font-size: 13px;
 }
 

@@ -1,5 +1,7 @@
 <template>
   <div class="resource-list-page">
+    <!-- 资源页面指南弹窗 -->
+    <ResourceGuideModal ref="resourceGuideModalRef" />
     <div class="page-header">
       <h1>资源列表</h1>
       <p class="subtitle">发现和下载优质学习资源</p>
@@ -29,13 +31,13 @@
       <div class="filter-row">
         <el-select
           v-model="filterCourseSns"
-          placeholder="关联课程"
+          placeholder="课程[可输入]"
           clearable
           multiple
           filterable
           collapse-tags
           collapse-tags-tooltip
-          class="filter-item"
+          class="filter-item red-placeholder"
           :disabled="loading || loadingCourses"
           :loading="loadingCourses"
         >
@@ -49,13 +51,13 @@
 
         <el-select
           v-model="filterTeacherSns"
-          placeholder="关联教师"
+          placeholder="教师[可输入]"
           clearable
           multiple
           filterable
           collapse-tags
           collapse-tags-tooltip
-          class="filter-item"
+          class="filter-item red-placeholder"
           :disabled="loading || loadingTeachers"
           :loading="loadingTeachers"
         >
@@ -133,6 +135,15 @@
               @click="handleChangeFavorite"
             >
               重新选择
+            </el-button>
+
+            <el-button
+              v-if="favoriteLocked"
+              type="warning"
+              :loading="batchAddingAll"
+              @click="handleAddAllCurrentPage"
+            >
+              将当前页面 {{ resources.length }} 份资源全部加入收藏夹
             </el-button>
           </div>
         </div>
@@ -270,6 +281,7 @@ import { useFavoriteStore } from '../../stores/favorite';
 import { useAuthStore } from '../../stores/auth';
 import type { Favorite } from '../../types/favorite';
 import logger from '../../utils/logger';
+import ResourceGuideModal from '../../components/common/ResourceGuideModal.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -305,6 +317,7 @@ const enableQuickAdd = ref(false);
 const selectedFavoriteId = ref<string>('');
 const favoriteLocked = ref(false);
 const addingResourceId = ref<string | null>(null);
+const batchAddingAll = ref(false);
 
 // 收藏夹列表（带实时数量）
 const favoritesWithCount = ref<Favorite[]>([]);
@@ -335,6 +348,51 @@ const handleSelectFavorite = () => {
 // 重新选择收藏夹
 const handleChangeFavorite = () => {
   favoriteLocked.value = false;
+};
+
+// 将当前页面所有资源加入收藏夹
+const handleAddAllCurrentPage = async () => {
+  if (!selectedFavoriteId.value || resources.value.length === 0) return;
+
+  batchAddingAll.value = true;
+  const favoriteName = selectedFavorite.value?.name || '收藏夹';
+  let successCount = 0;
+  let existCount = 0;
+  let failCount = 0;
+
+  try {
+    for (const resource of resources.value) {
+      try {
+        const added = await favoriteStore.addResourceToFavorite(selectedFavoriteId.value, resource.id);
+        if (added) {
+          successCount++;
+        } else {
+          existCount++;
+        }
+      } catch (error: any) {
+        failCount++;
+        logger.error('[ResourceList]', `批量添加资源失败: ${resource.id}`, error);
+      }
+    }
+
+    // 显示汇总消息
+    if (successCount > 0 && existCount === 0 && failCount === 0) {
+      ElMessage.success(`成功将 ${successCount} 份资源加入收藏夹: ${favoriteName}`);
+    } else if (successCount > 0 || existCount > 0) {
+      const parts = [];
+      if (successCount > 0) parts.push(`成功添加 ${successCount} 份`);
+      if (existCount > 0) parts.push(`已存在 ${existCount} 份`);
+      if (failCount > 0) parts.push(`失败 ${failCount} 份`);
+      ElMessage.info(`${parts.join('，')} 到收藏夹: ${favoriteName}`);
+    } else if (failCount > 0) {
+      ElMessage.error(`添加失败，${failCount} 份资源未能加入收藏夹`);
+    }
+  } catch (error: any) {
+    ElMessage.error('批量添加失败，请稍后重试');
+    logger.error('[ResourceList]', '批量添加所有资源失败:', error);
+  } finally {
+    batchAddingAll.value = false;
+  }
 };
 
 // 处理资源卡片点击（批量收藏模式）
@@ -583,6 +641,11 @@ onMounted(() => {
 
 .filter-item {
   width: 180px;
+}
+
+/* 红色placeholder样式 */
+.red-placeholder :deep(.el-select__placeholder) {
+  color: var(--el-color-danger);
 }
 
 /* 批量收藏控制区样式 */

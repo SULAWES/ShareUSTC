@@ -100,7 +100,7 @@ import { useRouter } from 'vue-router';
 import { User, Lock, Message } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import { useSiteConfigStore } from '../../stores/siteConfig';
-import type { FormInstance, FormRules } from 'element-plus';
+import type { FormInstance, FormRules, FormItemRule } from 'element-plus';
 import logger from '../../utils/logger';
 
 const router = useRouter();
@@ -114,7 +114,7 @@ const emailLabel = computed(() => {
 });
 
 // 邮箱验证规则
-const emailRules = computed(() => {
+const emailRules = computed<FormItemRule[]>(() => {
   if (siteConfigStore.requireEmailOnRegister) {
     return [
       { required: true, message: '请输入邮箱', trigger: 'blur' },
