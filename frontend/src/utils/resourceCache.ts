@@ -5,8 +5,9 @@
  */
 
 import logger from './logger';
+import { cacheConfig } from '../config/site.config';
 
-const DB_NAME = 'ShareUSTC_ResourceCache';
+const DB_NAME = cacheConfig.dbName;
 const DB_VERSION = 2; // 升级版本以支持 updatedAt
 const STORE_NAME = 'resources';
 

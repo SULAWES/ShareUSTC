@@ -2,6 +2,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::config::BrandConfig;
 use crate::services::StorageBackend;
 
 /// 创建数据库连接池
@@ -42,6 +43,8 @@ pub struct AppState {
     pub allow_username_change: bool,
     /// 是否允许用户修改邮箱
     pub allow_email_change: bool,
+    /// 品牌配置
+    pub brand: BrandConfig,
 }
 
 impl AppState {
@@ -53,6 +56,7 @@ impl AppState {
         require_email_on_register: bool,
         allow_username_change: bool,
         allow_email_change: bool,
+        brand: BrandConfig,
     ) -> Self {
         Self {
             pool,
@@ -62,6 +66,7 @@ impl AppState {
             require_email_on_register,
             allow_username_change,
             allow_email_change,
+            brand,
         }
     }
 }

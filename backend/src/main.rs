@@ -44,10 +44,10 @@ async fn hello(data: web::Data<AppState>) -> impl Responder {
 }
 
 #[get("/api/health")]
-async fn health_check() -> impl Responder {
+async fn health_check(config: web::Data<AppState>) -> impl Responder {
     HttpResponse::Ok().json(serde_json::json!({
         "status": "healthy",
-        "service": "ShareUSTC Backend"
+        "service": config.brand.service_name
     }))
 }
 
@@ -161,7 +161,7 @@ async fn main() -> std::io::Result<()> {
         log::warn!("[System] 创建资源上传目录失败 | error={}", e);
     });
 
-    log::info!("[System] Starting ShareUSTC backend server...");
+    log::info!("[System] Starting {} server...", config.brand.service_name);
     log::info!("[System] Server address: http://{}", server_addr);
     log::info!(
         "[System] Image upload directory: {}",
@@ -247,6 +247,7 @@ async fn main() -> std::io::Result<()> {
         config.require_email_on_register,
         config.allow_username_change,
         config.allow_email_change,
+        config.brand.clone(),
     ));
 
     // 启动文件哈希计算后台任务

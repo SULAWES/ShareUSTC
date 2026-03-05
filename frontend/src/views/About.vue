@@ -1,8 +1,8 @@
 <template>
   <div class="about">
     <div class="about-header">
-      <h1>关于 ShareUSTC</h1>
-      <p class="subtitle">中国科学技术大学学习资源分享平台</p>
+      <h1>{{ brandConfig.aboutPageTitle }}</h1>
+      <p class="subtitle">{{ brandConfig.aboutPageSubtitle }}</p>
     </div>
 
     <div class="about-content">
@@ -11,8 +11,8 @@
         <!-- 平台介绍 -->
         <section class="section section-left">
           <h2>平台简介</h2>
-          <p>ShareUSTC 是一个面向USTC学生的学习资源分享平台，旨在促进校内优质学习资源的共享与传承，打造互助性的学习社区。</p>
-          <p>在这里，你可以下载课程笔记、往年试卷、复习提纲、讲义等各类学习资料，也可以分享自己的学习资源，帮助更多同学。</p>
+          <p>{{ platformConfig.description }}</p>
+          <p>{{ platformConfig.descriptionSecond }}</p>
         </section>
 
         <!-- 功能特色 -->
@@ -78,16 +78,16 @@
       <!-- 开源信息 -->
       <section class="section">
         <h2>开源项目</h2>
-        <p>ShareUSTC 是一个开源项目，欢迎访问我们的 GitHub 仓库，为网站的开发提出建议或贡献代码！</p>
+        <p>{{ platformConfig.openSourceDescription }}</p>
         <div class="opensource-container">
           <!-- 左侧：仓库信息 -->
-          <a href="https://github.com/Amsors/ShareUSTC" target="_blank" rel="noopener noreferrer" class="github-link">
+          <a :href="platformConfig.githubRepoUrl" target="_blank" rel="noopener noreferrer" class="github-link">
             <div class="github-content">
               <svg class="github-icon" viewBox="0 0 98 96" xmlns="http://www.w3.org/2000/svg">
                 <path fill-rule="evenodd" clip-rule="evenodd" d="M48.854 0C21.839 0 0 22 0 49.217c0 21.756 13.993 40.172 33.405 46.69 2.427.49 3.316-1.059 3.316-2.362 0-1.141-.08-5.052-.08-9.127-13.59 2.934-16.42-5.867-16.42-5.867-2.184-5.704-5.42-7.17-5.42-7.17-4.448-3.015.324-3.015.324-3.015 4.934.326 7.523 5.052 7.523 5.052 4.367 7.496 11.404 5.378 14.235 4.074.404-3.178 1.699-5.378 3.074-6.6-10.839-1.141-22.243-5.378-22.243-24.283 0-5.378 1.94-9.778 5.014-13.2-.485-1.222-2.184-6.275.486-13.038 0 0 4.125-1.304 13.426 5.052a46.97 46.97 0 0 1 12.214-1.63c4.125 0 8.33.571 12.213 1.63 9.302-6.356 13.427-5.052 13.427-5.052 2.67 6.763.97 11.816.485 13.038 3.155 3.422 5.015 7.822 5.015 13.2 0 18.905-11.404 23.06-22.324 24.283 1.78 1.548 3.316 4.481 3.316 9.126 0 6.6-.08 11.897-.08 13.526 0 1.304.89 2.853 3.316 2.364 19.412-6.52 33.405-24.935 33.405-46.691C97.707 22 75.788 0 48.854 0z" fill="currentColor"/>
               </svg>
               <div class="github-info">
-                <span class="github-text">Amsors/ShareUSTC</span>
+                <span class="github-text">{{ platformConfig.githubRepoName }}</span>
                 <div class="github-stats">
                   <div class="stat-item">
                     <svg class="stat-icon star-icon" viewBox="0 0 16 17" fill="currentColor">
@@ -163,64 +163,32 @@
         <h2>当前资源来源</h2>
         <div class="resource-source-list">
 
-          <div class="resource-source-item">
+          <div v-for="source in resourceSources" :key="source.id" class="resource-source-item">
             <div class="source-main">
               <div class="source-info">
-                <span class="source-label">资料来源：</span>
+                <span class="source-label">{{ source.sourceLabel }}</span>
                 <a
-                  href="https://github.com/USTC-Resource/USTC-Course"
+                  :href="source.sourceUrl"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="source-link"
                 >
                   <el-icon><Link /></el-icon>
-                  Github: USTC-Resource/USTC-Course
+                  {{ source.sourceLinkText }}
                 </a>
               </div>
               <div class="uploader-info">
                 <span class="uploader-label">上传者：</span>
-                <router-link to="/user/9ce37c81-8560-40c2-8d0f-05d079401273" class="uploader-link">
+                <router-link :to="`/user/${source.uploaderId}`" class="uploader-link">
                   <el-icon><User /></el-icon>
-                  USTC_Course
+                  {{ source.uploaderName }}
                 </router-link>
               </div>
             </div>
             <el-button
               type="primary"
               size="small"
-              @click="showSourceDetail('ustcCourse')"
-            >
-              <el-icon><InfoFilled /></el-icon>
-              查看详情
-            </el-button>
-          </div>
-
-          <div class="resource-source-item">
-            <div class="source-main">
-              <div class="source-info">
-                <span class="source-label">资料来源：</span>
-                <a
-                  href="https://share.feixu.site/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="source-link"
-                >
-                  <el-icon><Link /></el-icon>
-                  《我的科大》资源分享版块：share.feixu.site
-                </a>
-              </div>
-              <div class="uploader-info">
-                <span class="uploader-label">上传者：</span>
-                <router-link to="/user/b3a171bf-e3cb-4e16-bec0-a69b5b5e54bc" class="uploader-link">
-                  <el-icon><User /></el-icon>
-                  share_feixu_site
-                </router-link>
-              </div>
-            </div>
-            <el-button
-              type="primary"
-              size="small"
-              @click="showSourceDetail('feixu')"
+              @click="showSourceDetail(source.detailId)"
             >
               <el-icon><InfoFilled /></el-icon>
               查看详情
@@ -267,7 +235,7 @@
         <h2>联系我们</h2>
         <p>
           如有任何问题或建议，欢迎发 Issues 反馈，也可以添加企鹅群联系我们
-          <span class="qq-group" @click="copyQQGroup">1084014548</span>
+          <span class="qq-group" @click="copyQQGroup">{{ contactConfig.qqGroup }}</span>
           （点击复制）。
         </p>
       </section>
@@ -276,102 +244,11 @@
       <section class="section changelog-section">
         <h2>更新日志</h2>
         <div class="changelog-list">
-          <div class="changelog-item">
-            <div class="changelog-date">2026-03-05</div>
+          <div v-for="(item, index) in changelog" :key="index" class="changelog-item">
+            <div class="changelog-date">{{ item.date }}</div>
             <div class="changelog-content">
-              <span class="changelog-tag tag-improve">功能优化</span>
-              <span class="changelog-text">新增收藏夹打包下载的oss直传和浏览器打包</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-28</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-fix">问题修复</span>
-              <span class="changelog-text">修复未登录用户无法查看和下载资源的问题</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-22</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-improve">功能优化</span>
-              <span class="changelog-text">允许用户修改资源信息和删除评论</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-22</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-feature">新增功能</span>
-              <span class="changelog-text">新增设置关联资源的功能</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-21</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-feature">新增功能</span>
-              <span class="changelog-text">新增设置默认收藏夹、一键加入收藏夹的功能</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-20</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-improve">功能优化</span>
-              <span class="changelog-text">将文件预览改为从 oss 读取；在浏览器侧缓存文件资源，降低服务器带宽消耗</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-18</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-feature">新增功能</span>
-              <span class="changelog-text">新增 oss 图片/资源存储，大幅加快资源的访问速度</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-18</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-feature">新增功能</span>
-              <span class="changelog-text">增加通过课程和教师搜索资料的功能</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-18</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-fix">问题修复</span>
-              <span class="changelog-text">修复服务器部署后图床的 BaseURL 为 localhost 的错误</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-15</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-feature">新增功能</span>
-              <span class="changelog-text">上线资料多维度评分，支持对资源的难度、质量、参考答案质量等5个维度进行评分</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-13</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-improve">功能优化</span>
-              <span class="changelog-text">将凭据的存储方由 local storage 改为 cookie</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-13</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-improve">功能优化</span>
-              <span class="changelog-text">优化首页设计，显示热门资源</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-12</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-feature">新增功能</span>
-              <span class="changelog-text">上线Markdown在线编辑器，支持图床插入图片</span>
-            </div>
-          </div>
-          <div class="changelog-item">
-            <div class="changelog-date">2026-02-06</div>
-            <div class="changelog-content">
-              <span class="changelog-tag tag-feature">新增功能</span>
-              <span class="changelog-text">完成基础功能的开发</span>
+              <span class="changelog-tag" :class="getChangelogTagClass(item.type)">{{ getChangelogTagText(item.type) }}</span>
+              <span class="changelog-text">{{ item.content }}</span>
             </div>
           </div>
         </div>
@@ -392,6 +269,16 @@ import { ref, onMounted, nextTick } from 'vue';
 import { Upload, Search, Star, HomeFilled, Trophy, Loading, Link, User, InfoFilled } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import logger from '../utils/logger';
+import {
+  brandConfig,
+  platformConfig,
+  resourceSources,
+  sourceDetails,
+  changelog,
+  contactConfig,
+  type ChangelogItem,
+  type SourceDetail,
+} from '../config/site.config';
 
 interface Contributor {
   login: string;
@@ -402,15 +289,25 @@ interface Contributor {
   htmlUrl: string;
 }
 
-interface SourceDetail {
-  id: string;
-  name: string;
-  description: string;
-  contents: string;
-  license: string;
-  updateTime: string;
-  modifications: string;
-}
+// 更新日志标签样式映射
+const getChangelogTagClass = (type: ChangelogItem['type']) => {
+  const classMap = {
+    feature: 'tag-feature',
+    improve: 'tag-improve',
+    fix: 'tag-fix',
+  };
+  return classMap[type];
+};
+
+// 更新日志标签文本映射
+const getChangelogTagText = (type: ChangelogItem['type']) => {
+  const textMap = {
+    feature: '新增功能',
+    improve: '功能优化',
+    fix: '问题修复',
+  };
+  return textMap[type];
+};
 
 const repoStats = ref({
   stars: '...',
@@ -423,27 +320,8 @@ const contributorsLoading = ref(true);
 const contributorsError = ref(false);
 const contributorsComputing = ref(false);
 
-// 资源来源详情数据
-const sourceDetails: Record<string, SourceDetail> = {
-  ustcCourse: {
-    id: 'ustcCourse',
-    name: 'USTC-Course',
-    description: 'Github 开源仓库 USTC-Resource/USTC-Course',
-    contents: '部分资料',
-    license: '仓库过于陈旧，疑似停止维护，暂未获得授权，如有侵权请联系我们下架。',
-    updateTime: '2026年3月2日上传，仓库数据截至 commit d091d4d',
-    modifications: '移除了部分实验/作业相关资料，仅保留了考试试卷、复习提纲、课程笔记等资源。将 ./概率论与数理统计/notes/P&MS - 20160422Revised.pdf 此份资料第二页的私货替换为空白页面。'
-  },
-  feixu: {
-    id: 'feixu',
-    name: 'share.feixu.site',
-    description: '《我的科大》网站的课程资源',
-    contents: '部分资料',
-    license: '已经获得网站维护者孙旭磊学长的授权。如有侵权请联系我们下架。',
-    updateTime: '2026年3月4日晚上传，已爬取数据截至2026年3月3日22:25',
-    modifications: '移除了部分过于陈旧的资料；移除了部分过时的实验/作业/题库类的资料；移除了出版物；将部分大压缩包拆分后重新压缩，将部分不受支持的文件打包后上传；移除了 ./数学类/实分析/2021实分析H期末考试.pdf 这份空文件，疑似是《我的科大》维护者未能成功上传。'
-  },
-};
+// 资源来源详情数据已从配置文件导入
+// const sourceDetails: Record<string, SourceDetail> = ...
 
 const sourceDetailVisible = ref(false);
 const selectedSource = ref<SourceDetail | null>(null);
@@ -503,7 +381,7 @@ const dbTech = ['PostgreSQL'];
 // 获取 GitHub 仓库信息
 const fetchRepoStats = async () => {
   try {
-    const response = await fetch('https://api.github.com/repos/Amsors/ShareUSTC');
+    const response = await fetch(`https://api.github.com/repos/${platformConfig.githubRepoName}`);
     if (response.ok) {
       const data = await response.json();
       repoStats.value = {
@@ -551,7 +429,7 @@ const fetchContributors = async (retryCount = 0): Promise<void> => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const response = await fetch('https://api.github.com/repos/Amsors/ShareUSTC/stats/contributors', {
+    const response = await fetch(`https://api.github.com/repos/${platformConfig.githubRepoName}/stats/contributors`, {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -652,7 +530,7 @@ onMounted(() => {
 
 // 复制 QQ 群号到剪切板
 const copyQQGroup = async () => {
-  const qqGroup = '1084014548';
+  const qqGroup = contactConfig.qqGroup;
   try {
     await navigator.clipboard.writeText(qqGroup);
     ElMessage({

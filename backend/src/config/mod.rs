@@ -1,5 +1,30 @@
 use std::env;
 
+/// 品牌配置结构体
+#[derive(Clone, Debug)]
+pub struct BrandConfig {
+    /// 服务名称（用于日志和健康检查）
+    pub service_name: String,
+}
+
+impl Default for BrandConfig {
+    fn default() -> Self {
+        Self {
+            service_name: "ShareUSTC Backend".to_string(),
+        }
+    }
+}
+
+impl BrandConfig {
+    /// 从环境变量加载品牌配置
+    pub fn from_env() -> Self {
+        Self {
+            service_name: env::var("SERVICE_NAME")
+                .unwrap_or_else(|_| "ShareUSTC Backend".to_string()),
+        }
+    }
+}
+
 /// 应用配置结构体
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -31,6 +56,8 @@ pub struct Config {
     pub allow_username_change: bool,
     /// 是否允许用户修改邮箱
     pub allow_email_change: bool,
+    /// 品牌配置
+    pub brand: BrandConfig,
 }
 
 impl Config {
@@ -130,6 +157,8 @@ impl Config {
             allow_email_change: env::var("ALLOW_EMAIL_CHANGE")
                 .map(|v| v != "false" && v != "0")
                 .unwrap_or(true),
+            // 品牌配置
+            brand: BrandConfig::from_env(),
         }
     }
 }

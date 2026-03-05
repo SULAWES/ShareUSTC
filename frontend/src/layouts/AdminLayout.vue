@@ -3,8 +3,8 @@
     <!-- 侧边栏 -->
     <aside class="sidebar" :class="{ collapsed: isCollapsed }">
       <div class="logo">
-        <span v-if="!isCollapsed">ShareUSTC 管理后台</span>
-        <span v-else>SU</span>
+        <span v-if="!isCollapsed">{{ brandConfig.adminTitle }}</span>
+        <span v-else>{{ brandConfig.adminTitleShort }}</span>
       </div>
       <nav class="menu">
         <router-link
@@ -54,6 +54,7 @@ import {
   Reading,
   Folder
 } from '@element-plus/icons-vue';
+import { brandConfig } from '../config/site.config';
 
 const isCollapsed = ref(false);
 

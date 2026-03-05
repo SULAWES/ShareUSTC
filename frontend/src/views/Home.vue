@@ -43,9 +43,9 @@
 
         <!-- Hero 区域（恢复原来大小） -->
         <div class="hero-section">
-          <h1>ShareUSTC</h1>
-          <p class="subtitle">学习资源分享平台</p>
-          <p class="description">分享知识，传递经验，获得4.3</p>
+          <h1>{{ homeConfig.heroTitle }}</h1>
+          <p class="subtitle">{{ homeConfig.heroSubtitle }}</p>
+          <p class="description">{{ homeConfig.heroDescription }}</p>
 
           <div class="hero-actions" v-if="!authStore.isAuthenticated">
             <el-button type="primary" size="large" @click="$router.push('/register')">
@@ -216,6 +216,7 @@ import type { HotResourceItem } from '../types/resource';
 import { ResourceTypeLabels } from '../types/resource';
 import UserGuideModal from '../components/common/UserGuideModal.vue';
 import logger from '../utils/logger';
+import { homeConfig } from '../config/site.config';
 import {
   Search,
   Trophy,

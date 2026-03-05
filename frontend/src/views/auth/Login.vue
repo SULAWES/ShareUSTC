@@ -2,8 +2,8 @@
   <div class="login-container">
     <el-card class="login-card" shadow="hover">
       <template #header>
-        <h2 class="login-title">登录 ShareUSTC</h2>
-        <p class="login-subtitle">校园学习资源分享平台</p>
+        <h2 class="login-title">{{ authConfig.loginTitle }}</h2>
+        <p class="login-subtitle">{{ authConfig.authSubtitle }}</p>
       </template>
 
       <el-form
@@ -61,6 +61,7 @@ import { User, Lock } from '@element-plus/icons-vue';
 import { useAuthStore } from '../../stores/auth';
 import type { FormInstance, FormRules } from 'element-plus';
 import logger from '../../utils/logger';
+import { authConfig } from '../../config/site.config';
 
 const router = useRouter();
 const route = useRoute();

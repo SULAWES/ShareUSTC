@@ -2,8 +2,8 @@
   <div class="register-container">
     <el-card class="register-card" shadow="hover">
       <template #header>
-        <h2 class="register-title">注册 ShareUSTC</h2>
-        <p class="register-subtitle">加入校园学习资源分享平台</p>
+        <h2 class="register-title">{{ authConfig.registerTitle }}</h2>
+        <p class="register-subtitle">{{ authConfig.registerSubtitle }}</p>
       </template>
 
       <el-form
@@ -102,6 +102,7 @@ import { useAuthStore } from '../../stores/auth';
 import { useSiteConfigStore } from '../../stores/siteConfig';
 import type { FormInstance, FormRules, FormItemRule } from 'element-plus';
 import logger from '../../utils/logger';
+import { authConfig } from '../../config/site.config';
 
 const router = useRouter();
 const authStore = useAuthStore();

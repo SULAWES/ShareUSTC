@@ -2,7 +2,7 @@
   <nav class="navbar">
     <div class="nav-brand">
       <h1 @click="$router.push('/')" style="cursor: pointer;">
-        ShareUSTC
+        {{ brandConfig.siteName }}
         <span v-if="isDevMode" class="dev-badge">开发版</span>
       </h1>
     </div>
@@ -46,6 +46,7 @@ import { ArrowDown } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 import NotificationBell from './notification/NotificationBell.vue';
 import { computed } from 'vue';
+import { brandConfig } from '../config/site.config';
 
 const router = useRouter();
 const authStore = useAuthStore();
