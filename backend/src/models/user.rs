@@ -203,6 +203,36 @@ pub struct VerificationRequest {
     pub grade: Option<String>,
 }
 
+/// 修改密码请求 DTO
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePasswordRequest {
+    pub old_password: String,
+    pub new_password: String,
+}
+
+impl ChangePasswordRequest {
+    /// 验证修改密码请求
+    pub fn validate(&self) -> Result<(), String> {
+        // 验证旧密码不为空
+        if self.old_password.is_empty() {
+            return Err("原密码不能为空".to_string());
+        }
+
+        // 验证新密码长度
+        if self.new_password.len() < 6 {
+            return Err("新密码长度至少为6个字符".to_string());
+        }
+
+        // 验证新密码不能与旧密码相同
+        if self.old_password == self.new_password {
+            return Err("新密码不能与原密码相同".to_string());
+        }
+
+        Ok(())
+    }
+}
+
 /// 用户资料响应（公开信息）
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

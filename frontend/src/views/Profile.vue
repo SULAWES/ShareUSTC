@@ -32,6 +32,10 @@
             <el-icon><Setting /></el-icon>
             <span>账号设置</span>
           </el-menu-item>
+          <el-menu-item index="password">
+            <el-icon><Lock /></el-icon>
+            <span>修改密码</span>
+          </el-menu-item>
           <el-menu-item index="verification" v-if="!authStore.isVerified">
             <el-icon><CircleCheck /></el-icon>
             <span>实名认证</span>
@@ -308,6 +312,51 @@
 
         </div>
 
+        <!-- 修改密码页面 -->
+        <div v-if="activeMenu === 'password'" class="content-section">
+          <h2>修改密码</h2>
+          <el-card class="password-card">
+            <el-form
+              ref="passwordFormRef"
+              :model="passwordForm"
+              :rules="passwordRules"
+              label-width="100px"
+              class="password-form"
+            >
+              <el-form-item label="原密码" prop="oldPassword">
+                <el-input
+                  v-model="passwordForm.oldPassword"
+                  type="password"
+                  show-password
+                  placeholder="请输入原密码"
+                />
+              </el-form-item>
+              <el-form-item label="新密码" prop="newPassword">
+                <el-input
+                  v-model="passwordForm.newPassword"
+                  type="password"
+                  show-password
+                  placeholder="请输入新密码（至少6位）"
+                />
+              </el-form-item>
+              <el-form-item label="确认密码" prop="confirmPassword">
+                <el-input
+                  v-model="passwordForm.confirmPassword"
+                  type="password"
+                  show-password
+                  placeholder="请再次输入新密码"
+                />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" :loading="changingPassword" @click="handleChangePassword">
+                  确认修改
+                </el-button>
+                <el-button @click="resetPasswordForm">重置</el-button>
+              </el-form-item>
+            </el-form>
+          </el-card>
+        </div>
+
         <!-- 实名认证页面 -->
         <div v-if="activeMenu === 'verification'" class="content-section">
           <h2>实名认证</h2>
@@ -375,9 +424,10 @@ import MarkdownIt from 'markdown-it';
 import { useAuthStore } from '../stores/auth';
 import { useSiteConfigStore } from '../stores/siteConfig';
 import logger from '../utils/logger';
-import { getCurrentUser, updateProfile, verifyUser, getUserProfile } from '../api/user';
+import { getCurrentUser, updateProfile, verifyUser, getUserProfile, changePassword } from '../api/user';
 import MarkdownEditor from '../components/editor/MarkdownEditor.vue';
 import type { UpdateProfileRequest, VerificationRequest } from '../api/user';
+import type { FormInstance, FormRules } from 'element-plus';
 import { getMyResources, deleteResource } from '../api/resource';
 import type { ResourceListItem } from '../types/resource';
 import {
@@ -400,7 +450,8 @@ import {
   Download,
   Star,
   Loading,
-  Link
+  Link,
+  Lock
 } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
@@ -441,6 +492,72 @@ const previewVisible = ref(false);
 const activeMenu = ref('overview');
 const saving = ref(false);
 const verifying = ref(false);
+
+// 修改密码相关
+const changingPassword = ref(false);
+const passwordFormRef = ref<FormInstance>();
+const passwordForm = reactive({
+  oldPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+});
+
+// 验证确认密码
+const validateConfirmPassword = (_rule: any, value: string, callback: any) => {
+  if (value === '') {
+    callback(new Error('请再次输入新密码'));
+  } else if (value !== passwordForm.newPassword) {
+    callback(new Error('两次输入的密码不一致'));
+  } else {
+    callback();
+  }
+};
+
+// 密码表单验证规则
+const passwordRules: FormRules = {
+  oldPassword: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
+  newPassword: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 6, message: '新密码长度至少为6位', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, validator: validateConfirmPassword, trigger: 'blur' }
+  ]
+};
+
+// 重置密码表单
+const resetPasswordForm = () => {
+  passwordForm.oldPassword = '';
+  passwordForm.newPassword = '';
+  passwordForm.confirmPassword = '';
+  passwordFormRef.value?.resetFields();
+};
+
+// 处理修改密码
+const handleChangePassword = async () => {
+  if (!passwordFormRef.value) return;
+
+  await passwordFormRef.value.validate(async (valid) => {
+    if (valid) {
+      changingPassword.value = true;
+      try {
+        await changePassword({
+          oldPassword: passwordForm.oldPassword,
+          newPassword: passwordForm.newPassword
+        });
+        ElMessage.success('密码修改成功');
+        resetPasswordForm();
+      } catch (error: any) {
+        // 错误已在 request.ts 中统一处理
+        if (error.response?.status === 401) {
+          ElMessage.error('原密码错误');
+        }
+      } finally {
+        changingPassword.value = false;
+      }
+    }
+  });
+};
 
 const userStats = reactive({
   uploadsCount: 0,
@@ -845,6 +962,14 @@ const refreshUserInfo = async () => {
 
 .verification-card {
   max-width: 600px;
+}
+
+.password-card {
+  max-width: 500px;
+}
+
+.password-form {
+  max-width: 400px;
 }
 
 .verification-desc {

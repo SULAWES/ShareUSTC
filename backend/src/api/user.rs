@@ -1,11 +1,12 @@
 use crate::db::AppState;
 use crate::models::{
-    CurrentUser, UpdateProfileRequest, UserHomepageQuery, UserRole, VerificationRequest,
+    ChangePasswordRequest, CurrentUser, UpdateProfileRequest, UserHomepageQuery, UserRole,
+    VerificationRequest,
 };
 use crate::services::{AuditLogService, UserError, UserService};
 use crate::utils::{
     bad_request, forbidden, generate_access_token, generate_refresh_token, internal_error,
-    not_found,
+    not_found, unauthorized,
 };
 use actix_web::cookie::{time::Duration as CookieDuration, Cookie, SameSite};
 use actix_web::{get, post, put, web, HttpRequest, HttpResponse, Responder};
@@ -280,6 +281,72 @@ pub async fn get_site_config(state: web::Data<AppState>) -> impl Responder {
     })
 }
 
+/// 修改用户密码
+#[put("/users/me/password")]
+pub async fn change_password(
+    state: web::Data<AppState>,
+    user: web::ReqData<CurrentUser>,
+    req: web::Json<ChangePasswordRequest>,
+    http_req: HttpRequest,
+) -> impl Responder {
+    // 验证请求
+    if let Err(msg) = req.validate() {
+        return bad_request(&msg);
+    }
+
+    log::info!("[User] 用户请求修改密码 | user_id={}", user.id);
+
+    match UserService::change_password(
+        &state.pool,
+        user.id,
+        &req.old_password,
+        &req.new_password,
+    )
+    .await
+    {
+        Ok(()) => {
+            log::info!("[User] 用户密码修改成功 | user_id={}", user.id);
+
+            // 记录审计日志
+            let ip_address = http_req.peer_addr().map(|addr| addr.ip().to_string());
+            if let Err(e) = AuditLogService::log_action(
+                &state.pool,
+                user.id,
+                "change_password",
+                Some("user"),
+                Some(user.id),
+                None,
+                ip_address.as_deref(),
+            )
+            .await
+            {
+                log::warn!(
+                    "[Audit] 记录修改密码日志失败 | user_id={}, error={}",
+                    user.id,
+                    e
+                );
+            }
+
+            HttpResponse::Ok().json(serde_json::json!({
+                "message": "密码修改成功"
+            }))
+        }
+        Err(e) => {
+            log::warn!(
+                "[User] 用户密码修改失败 | user_id={}, error={}",
+                user.id,
+                e
+            );
+            match e {
+                UserError::UserNotFound(msg) => not_found(&msg),
+                UserError::InvalidCredentials(msg) => unauthorized(&msg),
+                UserError::ValidationError(msg) => bad_request(&msg),
+                _ => internal_error("修改密码失败"),
+            }
+        }
+    }
+}
+
 /// 配置用户路由
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(get_current_user)
@@ -287,5 +354,6 @@ pub fn config(cfg: &mut web::ServiceConfig) {
         .service(verify_user)
         .service(get_user_homepage) // 必须在 get_user_profile 之前注册
         .service(get_user_profile)
-        .service(get_site_config);
+        .service(get_site_config)
+        .service(change_password);
 }

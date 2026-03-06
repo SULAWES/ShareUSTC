@@ -198,6 +198,10 @@ export const downloadResource = async (
         logger.info('[Resource]', `从缓存下载 | resourceId=${resourceId}, size=${cached.fileSize}`);
         const finalFileName = downloadFileName || cached.fileName || resourceDetail?.title || 'download';
         downloadFromCache(cached, finalFileName);
+        // 记录下载（缓存下载也需要记录）
+        trackResourceDownload(resourceId).catch((e) => {
+          logger.warn('[Resource]', `记录缓存下载失败 | resourceId=${resourceId}`, e);
+        });
         return;
       }
     }
@@ -561,5 +565,20 @@ export const updateResourceDescription = async (
     url: `/resources/${resourceId}/description`,
     method: 'put',
     data: { description }
+  });
+};
+
+/**
+ * 记录资源下载（用于缓存下载和浏览器端打包下载场景）
+ * 当资源从缓存直接下载或浏览器端打包下载时，调用此接口记录下载次数
+ * @param resourceId 资源ID
+ * @returns 记录结果
+ */
+export const trackResourceDownload = async (
+  resourceId: string
+): Promise<{ message: string; resourceId: string }> => {
+  return request({
+    url: `/resources/${resourceId}/track-download`,
+    method: 'post'
   });
 };

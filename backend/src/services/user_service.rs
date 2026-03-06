@@ -13,6 +13,7 @@ pub enum UserError {
     UserExists(String),
     DatabaseError(String),
     ValidationError(String),
+    InvalidCredentials(String),
 }
 
 impl std::fmt::Display for UserError {
@@ -22,6 +23,7 @@ impl std::fmt::Display for UserError {
             UserError::UserExists(msg) => write!(f, "用户已存在: {}", msg),
             UserError::DatabaseError(msg) => write!(f, "数据库错误: {}", msg),
             UserError::ValidationError(msg) => write!(f, "验证错误: {}", msg),
+            UserError::InvalidCredentials(msg) => write!(f, "凭据错误: {}", msg),
         }
     }
 }
@@ -470,5 +472,59 @@ impl UserService {
             resources,
             resources_total: uploads_count,
         })
+    }
+
+    /// 修改用户密码
+    ///
+    /// # Arguments
+    /// * `pool` - 数据库连接池
+    /// * `user_id` - 用户ID
+    /// * `old_password` - 原密码
+    /// * `new_password` - 新密码
+    pub async fn change_password(
+        pool: &PgPool,
+        user_id: Uuid,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), UserError> {
+        // 获取用户当前密码哈希
+        let user: crate::models::User = sqlx::query_as::<_, crate::models::User>(
+            "SELECT id, sn, username, password_hash, email, role, bio,
+                    CASE WHEN social_links = '{}'::jsonb THEN NULL ELSE social_links END as social_links,
+                    CASE WHEN real_info = '{}'::jsonb THEN NULL ELSE real_info END as real_info,
+                    is_verified, is_active, created_at, updated_at
+             FROM users WHERE id = $1 AND is_active = true"
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| UserError::DatabaseError(e.to_string()))?
+        .ok_or_else(|| UserError::UserNotFound("用户不存在".to_string()))?;
+
+        // 验证原密码
+        let password_valid = crate::utils::verify_password(old_password, &user.password_hash)
+            .map_err(|e| UserError::DatabaseError(format!("密码验证失败: {}", e)))?;
+
+        if !password_valid {
+            return Err(UserError::InvalidCredentials("原密码错误".to_string()));
+        }
+
+        // 哈希新密码
+        let new_password_hash = crate::utils::hash_password(new_password)
+            .map_err(|e| UserError::DatabaseError(format!("密码哈希失败: {}", e)))?;
+
+        // 更新密码
+        sqlx::query(
+            "UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2"
+        )
+        .bind(new_password_hash)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .map_err(|e| UserError::DatabaseError(format!("更新密码失败: {}", e)))?;
+
+        log::info!("[User] 用户密码已修改 | user_id={}", user_id);
+
+        Ok(())
     }
 }

@@ -49,35 +49,37 @@
           </template>
         </el-alert>
 
-        <el-table :data="favorites" v-loading="favoritesLoading" border>
-          <el-table-column prop="name" label="收藏夹名称" min-width="200">
-            <template #default="{ row }">
-              <div class="favorite-name">
-                <el-icon><Folder /></el-icon>
-                <span>{{ row.name }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="resourceCount" label="资源数量" width="120" align="center" />
-          <el-table-column prop="createdAt" label="创建时间" width="180">
-            <template #default="{ row }">
-              {{ formatDate(row.createdAt) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
-            <template #default="{ row }">
-              <el-button
-                type="danger"
-                size="small"
-                :disabled="row.resourceCount === 0"
-                @click="handleDeleteFavoriteResources(row)"
-              >
-                <el-icon><Delete /></el-icon>
-                删除全部资源
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="table-wrapper">
+          <el-table :data="favorites" v-loading="favoritesLoading" border>
+            <el-table-column prop="name" label="收藏夹名称" min-width="180">
+              <template #default="{ row }">
+                <div class="favorite-name">
+                  <el-icon><Folder /></el-icon>
+                  <span>{{ row.name }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="resourceCount" label="资源数量" width="90" align="center" />
+            <el-table-column prop="createdAt" label="创建时间" width="150">
+              <template #default="{ row }">
+                {{ formatDate(row.createdAt) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="130" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  type="danger"
+                  size="small"
+                  :disabled="row.resourceCount === 0"
+                  @click="handleDeleteFavoriteResources(row)"
+                >
+                  <el-icon><Delete /></el-icon>
+                  清空
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </div>
     </el-card>
 
@@ -96,101 +98,99 @@
         </div>
       </template>
 
-      <el-table
-        :data="resources"
-        v-loading="loading"
-        border
-        stripe
-        style="width: 100%"
-      >
-        <el-table-column prop="title" label="资源标题" min-width="250" show-overflow-tooltip>
-          <template #default="{ row }">
-            <div class="resource-title">
-              <el-link type="primary" @click="viewResource(row.id)">
-                {{ row.title }}
-              </el-link>
-            </div>
-          </template>
-        </el-table-column>
+      <div class="table-wrapper">
+        <el-table
+          :data="resources"
+          v-loading="loading"
+          border
+          stripe
+          style="width: 100%"
+        >
+          <el-table-column prop="title" label="资源标题" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="resource-title">
+                <el-link type="primary" @click="viewResource(row.id)">
+                  {{ row.title }}
+                </el-link>
+              </div>
+            </template>
+          </el-table-column>
 
-        <el-table-column prop="courseName" label="课程名称" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="courseName" label="课程名称" min-width="140" show-overflow-tooltip />
 
-        <el-table-column prop="resourceType" label="类型" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" :type="getResourceTypeType(row.resourceType)">
-              {{ formatResourceType(row.resourceType) }}
-            </el-tag>
-          </template>
-        </el-table-column>
+          <el-table-column label="类型/分类" width="90" align="center">
+            <template #default="{ row }">
+              <div class="type-category-cell">
+                <el-tag size="small" :type="getResourceTypeType(row.resourceType)">
+                  {{ formatResourceType(row.resourceType) }}
+                </el-tag>
+                <el-tag size="small" effect="plain" class="category-tag">
+                  {{ formatCategory(row.category) }}
+                </el-tag>
+              </div>
+            </template>
+          </el-table-column>
 
-        <el-table-column prop="category" label="分类" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" effect="plain">
-              {{ formatCategory(row.category) }}
-            </el-tag>
-          </template>
-        </el-table-column>
+          <el-table-column prop="auditStatus" label="状态" width="70" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="getAuditStatusType(row.auditStatus)">
+                {{ formatAuditStatus(row.auditStatus) }}
+              </el-tag>
+            </template>
+          </el-table-column>
 
-        <el-table-column prop="auditStatus" label="状态" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag size="small" :type="getAuditStatusType(row.auditStatus)">
-              {{ formatAuditStatus(row.auditStatus) }}
-            </el-tag>
-          </template>
-        </el-table-column>
+          <el-table-column prop="uploaderName" label="上传者" width="100" />
 
-        <el-table-column prop="uploaderName" label="上传者" width="120" />
+          <el-table-column prop="fileSize" label="大小" width="80" align="right">
+            <template #default="{ row }">
+              {{ formatFileSize(row.fileSize) }}
+            </template>
+          </el-table-column>
 
-        <el-table-column prop="fileSize" label="大小" width="100" align="right">
-          <template #default="{ row }">
-            {{ formatFileSize(row.fileSize) }}
-          </template>
-        </el-table-column>
+          <el-table-column label="统计" width="130">
+            <template #default="{ row }">
+              <div class="stats-row compact">
+                <span class="stat-item" title="浏览">
+                  <el-icon><View /></el-icon> {{ row.views || 0 }}
+                </span>
+                <span class="stat-item" title="下载">
+                  <el-icon><Download /></el-icon> {{ row.downloads || 0 }}
+                </span>
+                <span class="stat-item" title="点赞">
+                  <el-icon><Pointer /></el-icon> {{ row.likes || 0 }}
+                </span>
+              </div>
+            </template>
+          </el-table-column>
 
-        <el-table-column label="统计" width="180">
-          <template #default="{ row }">
-            <div class="stats-row">
-              <span class="stat-item" title="浏览">
-                <el-icon><View /></el-icon> {{ row.views || 0 }}
-              </span>
-              <span class="stat-item" title="下载">
-                <el-icon><Download /></el-icon> {{ row.downloads || 0 }}
-              </span>
-              <span class="stat-item" title="点赞">
-                <el-icon><Pointer /></el-icon> {{ row.likes || 0 }}
-              </span>
-            </div>
-          </template>
-        </el-table-column>
+          <el-table-column prop="createdAt" label="上传时间" width="140">
+            <template #default="{ row }">
+              {{ formatDate(row.createdAt) }}
+            </template>
+          </el-table-column>
 
-        <el-table-column prop="createdAt" label="上传时间" width="180">
-          <template #default="{ row }">
-            {{ formatDate(row.createdAt) }}
-          </template>
-        </el-table-column>
-
-        <el-table-column label="操作" width="200" fixed="right">
-          <template #default="{ row }">
-            <el-button
-              type="primary"
-              size="small"
-              :loading="recalculatingId === row.id"
-              @click="handleRecalculateHash(row)"
-            >
-              <el-icon><Refresh /></el-icon>
-              重算Hash
-            </el-button>
-            <el-button
-              type="danger"
-              size="small"
-              @click="handleDeleteResource(row)"
-            >
-              <el-icon><Delete /></el-icon>
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          <el-table-column label="操作" width="150" fixed="right">
+            <template #default="{ row }">
+              <el-button
+                type="primary"
+                size="small"
+                :loading="recalculatingId === row.id"
+                @click="handleRecalculateHash(row)"
+              >
+                <el-icon><Refresh /></el-icon>
+                Hash
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                @click="handleDeleteResource(row)"
+              >
+                <el-icon><Delete /></el-icon>
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
 
       <!-- 分页 -->
       <div class="pagination-wrapper">
@@ -607,6 +607,60 @@ onMounted(() => {
 .favorites-list {
   .el-table {
     margin-top: 16px;
+  }
+}
+
+// 表格横向滚动支持
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+
+  :deep(.el-table) {
+    min-width: 900px;
+  }
+}
+
+// 类型/分类合并单元格样式
+.type-category-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+
+  .category-tag {
+    font-size: 11px;
+  }
+}
+
+// 紧凑统计行样式
+.stats-row.compact {
+  gap: 8px;
+
+  .stat-item {
+    font-size: 12px;
+  }
+}
+
+// 响应式优化
+@media (max-width: 1200px) {
+  .resource-management-page {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .resource-management-page {
+    padding: 12px;
+  }
+
+  .search-bar {
+    max-width: 100%;
+  }
+
+  .table-wrapper {
+    :deep(.el-table) {
+      min-width: 800px;
+    }
   }
 }
 </style>

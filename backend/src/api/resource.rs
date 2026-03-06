@@ -919,6 +919,44 @@ pub struct ResourceSearchForRelationQuery {
     pub limit: Option<i32>,
 }
 
+/// 记录下载（用于缓存下载和浏览器端打包下载场景）
+/// 支持未登录用户（游客）
+#[post("/resources/{resource_id}/track-download")]
+pub async fn track_download(
+    state: web::Data<AppState>,
+    user: Option<web::ReqData<CurrentUser>>,
+    path: web::Path<Uuid>,
+    req: HttpRequest,
+) -> impl Responder {
+    let resource_id = path.into_inner();
+    let current_user = user.map(|u| u.into_inner());
+    let user_id = current_user.map(|u| u.id);
+
+    // 获取资源信息（用于审计日志）
+    let resource_detail = match ResourceService::get_resource_detail(&state.pool, resource_id).await {
+        Ok(detail) => detail,
+        Err(e) => {
+            log::warn!(
+                "[Resource] 获取资源详情失败(track-download) | resource_id={:?}, error={}",
+                resource_id,
+                e
+            );
+            return match e {
+                ResourceError::NotFound(msg) => not_found(&msg),
+                _ => internal_error("获取资源详情失败"),
+            };
+        }
+    };
+
+    // 记录下载事件
+    record_download_events(&state, resource_id, user_id, &resource_detail.title, &req).await;
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": "下载记录已保存",
+        "resourceId": resource_id
+    }))
+}
+
 /// 配置公开资源路由（不需要认证）
 pub fn config_public(cfg: &mut web::ServiceConfig) {
     // 注意：具体路径必须放在通配路径之前注册
@@ -930,6 +968,7 @@ pub fn config_public(cfg: &mut web::ServiceConfig) {
         .service(search_resources) // /resources/search
         .service(get_resource_detail) // /resources/{id} （后注册通配路径）
         .service(download_resource)
+        .service(track_download) // 记录下载（用于缓存/浏览器打包场景）
         .service(get_resource_content)
         .service(get_resource_preview_url) // OSS 直链预览 URL
         .service(get_like_status) // 获取点赞状态（支持未登录用户）

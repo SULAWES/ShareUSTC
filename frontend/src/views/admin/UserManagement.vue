@@ -100,8 +100,16 @@
             {{ formatDate(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
+            <el-button
+              type="primary"
+              link
+              size="small"
+              @click="showUserRealInfo(row)"
+            >
+              实名信息
+            </el-button>
             <el-button
               :type="row.isActive ? 'danger' : 'success'"
               link
@@ -127,6 +135,55 @@
         />
       </div>
     </el-card>
+
+    <!-- 实名信息对话框 -->
+    <el-dialog
+      v-model="realInfoDialogVisible"
+      title="用户实名信息"
+      width="500px"
+      destroy-on-close
+    >
+      <div v-loading="realInfoLoading" class="real-info-content">
+        <!-- 未实名提示 -->
+        <el-alert
+          v-if="!realInfoLoading && currentRealInfo && !currentRealInfo.isVerified"
+          type="warning"
+          :closable="false"
+          title="该用户尚未进行实名认证"
+          description="实名认证后，用户将可以修改个人简介、申领资源所有权等。"
+          show-icon
+          class="mb-4"
+        />
+
+        <!-- 实名信息表格 -->
+        <el-descriptions v-if="currentRealInfo" :column="1" border>
+          <el-descriptions-item label="用户名">
+            {{ currentRealInfo.username }}
+          </el-descriptions-item>
+          <el-descriptions-item label="实名状态">
+            <el-tag v-if="currentRealInfo.isVerified" type="success">已实名</el-tag>
+            <el-tag v-else type="info">未实名</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="姓名">
+            {{ currentRealInfo.realName || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="学号">
+            {{ currentRealInfo.studentId || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="专业">
+            {{ currentRealInfo.major || '-' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="年级">
+            {{ currentRealInfo.grade || '-' }}
+          </el-descriptions-item>
+        </el-descriptions>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="realInfoDialogVisible = false">关闭</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -135,6 +192,7 @@ import { ref, onMounted, computed } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { UserFilled, Search } from '@element-plus/icons-vue';
 import { adminApi } from '../../api/admin';
+import type { UserRealInfo } from '../../api/admin';
 
 interface User {
   id: string;
@@ -146,6 +204,11 @@ interface User {
   isActive: boolean;
   createdAt: string;
 }
+
+// 实名信息相关
+const realInfoDialogVisible = ref(false);
+const realInfoLoading = ref(false);
+const currentRealInfo = ref<UserRealInfo | null>(null);
 
 const loading = ref(false);
 const users = ref<User[]>([]);
@@ -227,6 +290,25 @@ const toggleUserStatus = async (user: User) => {
     if (error !== 'cancel' && !error.isHandled) {
       ElMessage.error('操作失败');
     }
+  }
+};
+
+// 显示用户实名信息
+const showUserRealInfo = async (user: User) => {
+  realInfoDialogVisible.value = true;
+  realInfoLoading.value = true;
+  currentRealInfo.value = null;
+
+  try {
+    const data = await adminApi.getUserRealInfo(user.id);
+    currentRealInfo.value = data;
+  } catch (error: any) {
+    if (!error.isHandled) {
+      ElMessage.error('获取实名信息失败');
+    }
+    realInfoDialogVisible.value = false;
+  } finally {
+    realInfoLoading.value = false;
   }
 };
 
@@ -316,5 +398,14 @@ onMounted(() => {
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid #ebeef5;
+}
+
+.real-info-content {
+  min-height: 200px;
+  padding: 10px 0;
+}
+
+.mb-4 {
+  margin-bottom: 16px;
 }
 </style>

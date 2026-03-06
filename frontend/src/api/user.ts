@@ -92,3 +92,14 @@ export const getUserHomepage = (userId: string, query?: UserHomepageQuery): Prom
 export const getSiteConfig = (): Promise<SiteConfig> => {
   return request.get('/config');
 };
+
+// 修改密码请求
+export interface ChangePasswordRequest {
+  oldPassword: string;
+  newPassword: string;
+}
+
+// 修改密码
+export const changePassword = (data: ChangePasswordRequest): Promise<void> => {
+  return request.put('/users/me/password', data);
+};

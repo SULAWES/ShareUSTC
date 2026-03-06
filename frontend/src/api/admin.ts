@@ -93,6 +93,21 @@ export const updateUserStatus = (userId: string, isActive: boolean): Promise<voi
   return request.put(`/admin/users/${userId}/status`, { isActive });
 };
 
+// 用户实名信息
+export interface UserRealInfo {
+  userId: string;
+  username: string;
+  isVerified: boolean;
+  realName?: string;
+  studentId?: string;
+  major?: string;
+  grade?: string;
+}
+
+export const getUserRealInfo = (userId: string): Promise<UserRealInfo> => {
+  return request.get(`/admin/users/${userId}/real-info`);
+};
+
 // 资源审核
 export const getPendingResources = (page: number = 1, perPage: number = 20): Promise<ResourceListResponse> => {
   return request.get('/admin/resources/pending', {
@@ -487,6 +502,7 @@ export const adminApi = {
   getDashboardStats,
   getUserList,
   updateUserStatus,
+  getUserRealInfo,
   getPendingResources,
   auditResource,
   getCommentList,

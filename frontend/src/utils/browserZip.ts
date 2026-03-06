@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import logger from './logger';
 import { resourceCache } from './resourceCache';
+import { trackResourceDownload } from '../api/resource';
 import type { PreviewUrlResponse } from '../api/resource';
 import type { FavoriteResourceItem } from '../types/favorite';
 
@@ -361,6 +362,24 @@ export const browserDownloadFavorite = async (
       '[BrowserZip]',
       `打包下载完成 | 文件名: ${downloadFileName}, 大小: ${zipBlob.size}, 缓存: ${cachedCount}, 下载: ${downloadedCount}`
     );
+
+    // 记录每个成功下载的资源的下载计数（排除失败的）
+    const successfulResourceIds = resources.map(r => r.id);
+
+    // 批量记录下载（异步执行，不阻塞完成状态）
+    logger.info('[BrowserZip]', `开始记录 ${successfulResourceIds.length} 个资源的下载计数`);
+    Promise.all(
+      successfulResourceIds.map(async (resourceId) => {
+        try {
+          await trackResourceDownload(resourceId);
+          logger.debug('[BrowserZip]', `记录下载成功 | resourceId=${resourceId}`);
+        } catch (e) {
+          logger.warn('[BrowserZip]', `记录下载失败 | resourceId=${resourceId}`, e);
+        }
+      })
+    ).then(() => {
+      logger.info('[BrowserZip]', '所有资源下载计数记录完成');
+    });
 
     // 报告完成
     onProgress?.({

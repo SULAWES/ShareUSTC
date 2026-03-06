@@ -191,6 +191,47 @@ async fn update_user_status(
     }
 }
 
+/// 获取用户实名信息
+#[get("/admin/users/{user_id}/real-info")]
+async fn get_user_real_info(
+    data: web::Data<AppState>,
+    current_user: actix_web::web::ReqData<CurrentUser>,
+    path: web::Path<Uuid>,
+) -> impl Responder {
+    let user = current_user.into_inner();
+
+    if let Err(e) = check_admin(&user) {
+        return handle_admin_error(e);
+    }
+
+    let user_id = path.into_inner();
+    log::info!(
+        "[Admin] 管理员获取用户实名信息 | admin_id={}, target_user_id={}",
+        user.id,
+        user_id
+    );
+
+    match AdminService::get_user_real_info(&data.pool, user_id).await {
+        Ok(real_info) => {
+            log::info!(
+                "[Admin] 获取用户实名信息成功 | admin_id={}, target_user_id={}",
+                user.id,
+                user_id
+            );
+            HttpResponse::Ok().json(real_info)
+        }
+        Err(e) => {
+            log::warn!(
+                "[Admin] 获取用户实名信息失败 | admin_id={}, target_user_id={}, error={}",
+                user.id,
+                user_id,
+                e
+            );
+            handle_admin_error(e)
+        }
+    }
+}
+
 /// 获取待审核资源列表
 #[get("/admin/resources/pending")]
 async fn get_pending_resources(
@@ -1427,6 +1468,7 @@ pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(get_dashboard)
         .service(get_user_list)
         .service(update_user_status)
+        .service(get_user_real_info)
         .service(get_pending_resources)
         .service(audit_resource)
         .service(get_comment_list)

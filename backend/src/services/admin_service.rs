@@ -73,6 +73,19 @@ pub struct UpdateUserStatusRequest {
     pub is_active: bool,
 }
 
+/// 用户实名信息响应
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserRealInfoResponse {
+    pub user_id: Uuid,
+    pub username: String,
+    pub is_verified: bool,
+    pub real_name: Option<String>,
+    pub student_id: Option<String>,
+    pub major: Option<String>,
+    pub grade: Option<String>,
+}
+
 /// 待审核资源列表项
 #[derive(Debug, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -1580,6 +1593,46 @@ impl AdminService {
             file_size: new_size,
             success: true,
             message: "Hash重新计算成功".to_string(),
+        })
+    }
+
+    /// 获取用户实名信息
+    pub async fn get_user_real_info(
+        pool: &PgPool,
+        user_id: Uuid,
+    ) -> Result<UserRealInfoResponse, AdminError> {
+        // 获取用户基本信息和实名信息
+        let row: (String, bool, Option<serde_json::Value>) = sqlx::query_as(
+            "SELECT username, is_verified, real_info FROM users WHERE id = $1"
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| AdminError::DatabaseError(format!("查询用户实名信息失败: {}", e)))?
+        .ok_or_else(|| AdminError::NotFound("用户不存在".to_string()))?;
+
+        let (username, is_verified, real_info_json) = row;
+
+        // 解析实名信息
+        let (real_name, student_id, major, grade) = if let Some(info) = real_info_json {
+            (
+                info.get("real_name").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                info.get("student_id").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                info.get("major").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                info.get("grade").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            )
+        } else {
+            (None, None, None, None)
+        };
+
+        Ok(UserRealInfoResponse {
+            user_id,
+            username,
+            is_verified,
+            real_name,
+            student_id,
+            major,
+            grade,
         })
     }
 }
