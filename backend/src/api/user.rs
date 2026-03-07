@@ -1,7 +1,7 @@
 use crate::db::AppState;
 use crate::models::{
-    ChangePasswordRequest, CurrentUser, UpdateProfileRequest, UserHomepageQuery, UserRole,
-    VerificationRequest,
+    ChangePasswordRequest, CurrentUser, LeaderboardQuery, UpdateProfileRequest, UserHomepageQuery,
+    UserRole, VerificationRequest,
 };
 use crate::services::{AuditLogService, UserError, UserService};
 use crate::utils::{
@@ -347,11 +347,27 @@ pub async fn change_password(
     }
 }
 
+/// 获取贡献榜单（公开接口，无需认证）
+#[get("/users/leaderboard")]
+pub async fn get_leaderboard(
+    state: web::Data<AppState>,
+    query: web::Query<LeaderboardQuery>,
+) -> impl Responder {
+    match UserService::get_leaderboard(&state.pool, &query.into_inner()).await {
+        Ok(leaderboard) => HttpResponse::Ok().json(leaderboard),
+        Err(e) => {
+            log::warn!("[User] 获取贡献榜单失败 | error={}", e);
+            internal_error("获取贡献榜单失败")
+        }
+    }
+}
+
 /// 配置用户路由
 pub fn config(cfg: &mut web::ServiceConfig) {
     cfg.service(get_current_user)
         .service(update_profile)
         .service(verify_user)
+        .service(get_leaderboard) // 必须在 get_user_profile 之前注册，避免被解析为 user_id
         .service(get_user_homepage) // 必须在 get_user_profile 之前注册
         .service(get_user_profile)
         .service(get_site_config)

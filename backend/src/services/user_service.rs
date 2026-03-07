@@ -1,7 +1,7 @@
 use crate::models::resource::{ResourceListItem, ResourceStatsResponse};
 use crate::models::{
-    UpdateProfileRequest, User, UserHomepageQuery, UserHomepageResponse, UserInfo,
-    UserProfileResponse, VerificationRequest,
+    LeaderboardQuery, LeaderboardResponse, LeaderboardUser, UpdateProfileRequest, User,
+    UserHomepageQuery, UserHomepageResponse, UserInfo, UserProfileResponse, VerificationRequest,
 };
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -526,5 +526,62 @@ impl UserService {
         log::info!("[User] 用户密码已修改 | user_id={}", user_id);
 
         Ok(())
+    }
+
+    /// 获取贡献榜单（按上传资源数量排序）
+    pub async fn get_leaderboard(
+        pool: &PgPool,
+        query: &LeaderboardQuery,
+    ) -> Result<LeaderboardResponse, UserError> {
+        let limit = query.get_limit();
+
+        // 获取上传资源数量前N的用户
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                u.id,
+                u.sn,
+                u.username,
+                u.bio,
+                u.role,
+                u.is_verified,
+                COUNT(r.id) as uploads_count,
+                COALESCE(SUM(rs.likes), 0) as total_likes,
+                COALESCE(SUM(rs.downloads), 0) as total_downloads
+            FROM users u
+            LEFT JOIN resources r ON u.id = r.uploader_id AND r.audit_status = 'approved'
+            LEFT JOIN resource_stats rs ON r.id = rs.resource_id
+            WHERE u.is_active = true
+            GROUP BY u.id, u.sn, u.username, u.bio, u.role, u.is_verified
+            HAVING COUNT(r.id) > 0
+            ORDER BY uploads_count DESC, total_likes DESC, u.created_at ASC
+            LIMIT $1
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| UserError::DatabaseError(e.to_string()))?;
+
+        let mut users = Vec::new();
+        for row in rows {
+            users.push(LeaderboardUser {
+                id: row.try_get("id").map_err(|e| UserError::DatabaseError(e.to_string()))?,
+                sn: row.try_get("sn").ok(),
+                username: row.try_get("username").map_err(|e| UserError::DatabaseError(e.to_string()))?,
+                bio: row.try_get("bio").ok(),
+                role: row.try_get("role").map_err(|e| UserError::DatabaseError(e.to_string()))?,
+                is_verified: row.try_get("is_verified").map_err(|e| UserError::DatabaseError(e.to_string()))?,
+                uploads_count: row.try_get::<i64, _>("uploads_count").unwrap_or(0),
+                total_likes: row.try_get::<i64, _>("total_likes").unwrap_or(0),
+                total_downloads: row.try_get::<i64, _>("total_downloads").unwrap_or(0),
+            });
+        }
+
+        let total = users.len() as i64;
+
+        log::info!("[User] 获取贡献榜单成功 | total={}", total);
+
+        Ok(LeaderboardResponse { users, total })
     }
 }

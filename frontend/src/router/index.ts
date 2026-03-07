@@ -102,6 +102,12 @@ const routes = [
     meta: { public: true }
   },
   {
+    path: '/leaderboard',
+    name: 'ContributionLeaderboard',
+    component: () => import('../views/user/ContributionLeaderboard.vue'),
+    meta: { public: true }
+  },
+  {
     path: '/notifications',
     name: 'NotificationCenter',
     component: () => import('../views/notification/NotificationCenter.vue'),

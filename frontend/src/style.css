@@ -11,6 +11,15 @@ html {
   }
 }
 
+/* 修复 Element Plus 弹窗导致的白条问题 */
+/* Element Plus 会在弹窗打开时设置 body.style.width = calc(100% - scrollBarWidth)
+ * 但结合 scrollbar-gutter: stable 会导致双重计算，产生白条
+ * 这里强制覆盖 body 宽度为 100%，让 scrollbar-gutter 单独处理滚动条空间 */
+body.el-popup-parent--hidden {
+  width: 100% !important;
+  overflow: hidden;
+}
+
 /* 隐藏文本编辑光标，但允许选中文本 */
 *,
 *::before,

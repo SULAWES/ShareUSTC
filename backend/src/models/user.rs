@@ -286,6 +286,42 @@ impl UserHomepageQuery {
     }
 }
 
+/// 贡献榜单查询参数
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderboardQuery {
+    pub limit: Option<i32>,
+}
+
+impl LeaderboardQuery {
+    pub fn get_limit(&self) -> i32 {
+        self.limit.unwrap_or(50).min(100).max(1)
+    }
+}
+
+/// 贡献榜单用户信息
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderboardUser {
+    pub id: Uuid,
+    pub sn: Option<i64>,
+    pub username: String,
+    pub bio: Option<String>,
+    pub role: String,
+    pub is_verified: bool,
+    pub uploads_count: i64,
+    pub total_likes: i64,
+    pub total_downloads: i64,
+}
+
+/// 贡献榜单响应
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderboardResponse {
+    pub users: Vec<LeaderboardUser>,
+    pub total: i64,
+}
+
 impl UpdateProfileRequest {
     /// 验证更新请求
     pub fn validate(&self) -> Result<(), String> {

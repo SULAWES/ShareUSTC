@@ -103,3 +103,32 @@ export interface ChangePasswordRequest {
 export const changePassword = (data: ChangePasswordRequest): Promise<void> => {
   return request.put('/users/me/password', data);
 };
+
+// 贡献榜单用户信息
+export interface LeaderboardUser {
+  id: string;
+  sn?: number;
+  username: string;
+  bio?: string;
+  role: string;
+  isVerified: boolean;
+  uploadsCount: number;
+  totalLikes: number;
+  totalDownloads: number;
+}
+
+// 贡献榜单响应
+export interface LeaderboardResponse {
+  users: LeaderboardUser[];
+  total: number;
+}
+
+// 贡献榜单查询参数
+export interface LeaderboardQuery {
+  limit?: number;
+}
+
+// 获取贡献榜单
+export const getLeaderboard = (query?: LeaderboardQuery): Promise<LeaderboardResponse> => {
+  return request.get('/users/leaderboard', { params: query });
+};

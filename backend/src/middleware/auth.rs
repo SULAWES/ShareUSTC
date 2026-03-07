@@ -149,7 +149,7 @@ where
 
             // 如果不是公开路径，必须有认证信息
             if !is_public && token.is_none() {
-                log::debug!("非公开路径缺少认证信息: {} {}", method, path);
+                log::info!("[Auth] 非公开路径缺少认证信息: {} {}", method, path);
                 return Err(ErrorUnauthorized("缺少认证信息"));
             }
 
@@ -196,7 +196,7 @@ where
 
             // 非公开路径，检查是否成功提取了用户信息
             if req.extensions().get::<CurrentUser>().is_none() {
-                log::debug!("非公开路径认证失败: {} {}", method, path);
+                log::info!("[Auth] 非公开路径认证失败: {} {}", method, path);
                 return Err(ErrorUnauthorized("需要登录"));
             }
 
