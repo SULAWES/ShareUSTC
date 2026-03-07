@@ -12,6 +12,7 @@
       :resource-id="resourceId"
       :resource-type="resourceType"
       :resource-title="resourceTitle"
+      :file-size="fileSize"
     />
     <MarkdownViewer
       v-else-if="previewType === 'markdown'"
@@ -48,6 +49,7 @@ const props = defineProps<{
   resourceId: string;
   resourceType: string;
   resourceTitle?: string;
+  fileSize?: number;
 }>();
 
 // 根据资源类型决定预览方式

@@ -54,6 +54,12 @@ const routes = [
     meta: { public: true }
   },
   {
+    path: '/pdf-preview-challenge',
+    name: 'PdfPreviewChallenge',
+    component: () => import('../views/PdfPreviewChallenge.vue'),
+    meta: { public: true }
+  },
+  {
     path: '/my-resources',
     name: 'MyResources',
     component: () => import('../views/Profile.vue'),
