@@ -366,7 +366,7 @@ const loadPdf = async () => {
       disableFontFace: false,  // 启用字体face以更好地支持嵌入式字体
       fontExtraProperties: true,  // 保留额外字体属性
       stopAtErrors: false,
-      maxImageSize: 1024 * 1024,
+      maxImageSize: 50 * 1024 * 1024, // 最大支持 50MB 的图片
     });
     loadingTask.onProgress = (progress: any) => {
       logger.debug('[PdfViewer]', `加载进度 | loaded=${progress.loaded}, total=${progress.total}`);
