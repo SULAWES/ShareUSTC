@@ -44,6 +44,55 @@
               />
             </div>
           </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-label">自动加载 PDF 资料预览</div>
+              <div class="setting-desc">
+                <template v-if="pdfPreviewVerified">
+                  通过检测后，可自动加载 PDF 预览以提升体验
+                </template>
+                <template v-else>
+                  需要通过检测才能启用此功能
+                </template>
+              </div>
+            </div>
+            <div class="setting-control">
+              <el-switch
+                v-model="autoLoadPdfPreview"
+                :disabled="!pdfPreviewVerified"
+                active-text="开启"
+                inactive-text="关闭"
+                @change="handleAutoLoadPdfPreviewChange"
+              />
+              <div v-if="!pdfPreviewVerified" class="setting-hint">
+                <el-link type="primary" @click="goToPdfPreviewChallenge">
+                  前往检测
+                </el-link>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="pdfPreviewVerified && autoLoadPdfPreview" class="setting-item threshold-setting">
+            <div class="setting-info">
+              <div class="setting-label">自动加载大小阈值</div>
+              <div class="setting-desc">
+                超过此大小的 PDF 不会自动加载，需要手动点击加载
+              </div>
+            </div>
+            <div class="setting-control">
+              <el-input-number
+                v-model="pdfPreviewSizeThreshold"
+                :min="1"
+                :max="100"
+                size="small"
+                class="threshold-input"
+                @change="handleThresholdChange"
+              >
+                <template #suffix>MB</template>
+              </el-input-number>
+            </div>
+          </div>
         </section>
 
         <!-- 缓存管理 -->
@@ -124,14 +173,22 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { Collection, Timer, Delete, Refresh, Setting } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { resourceCache, type CacheStats } from '../utils/resourceCache';
 import logger from '../utils/logger';
 
+const router = useRouter();
+
 // 用户指南弹窗 LocalStorage 键名
 const GUIDE_MODAL_KEY = 'userGuideModalClosed';
 const RESOURCE_GUIDE_MODAL_KEY = 'resourceGuideModalClosed';
+
+// PDF 预览设置 LocalStorage 键名
+const PDF_PREVIEW_VERIFIED_KEY = 'pdfPreviewVerified';
+const PDF_PREVIEW_AUTO_LOAD_KEY = 'pdfPreviewAutoLoad';
+const PDF_PREVIEW_USER_ENABLED_KEY = 'pdfPreviewUserEnabled';
 
 // 缓存状态
 const loading = ref(false);
@@ -226,11 +283,98 @@ onMounted(() => {
   refreshStats();
   loadUserGuideSetting();
   loadResourceGuideSetting();
+  loadPdfPreviewSettings();
 });
 
 // 用户指南设置
 const showUserGuide = ref(true);
 const showResourceGuide = ref(true);
+
+// PDF 预览设置
+const autoLoadPdfPreview = ref(false);
+const pdfPreviewVerified = ref(false);
+const pdfPreviewSizeThreshold = ref(5); // 默认 5MB
+
+// 加载 PDF 预览设置
+const loadPdfPreviewSettings = () => {
+  try {
+    // 检查是否已通过验证
+    const verifiedData = localStorage.getItem(PDF_PREVIEW_VERIFIED_KEY);
+    if (verifiedData) {
+      const verified = JSON.parse(verifiedData);
+      pdfPreviewVerified.value = verified.verified === true;
+    } else {
+      pdfPreviewVerified.value = false;
+    }
+
+    // 加载自动加载设置（默认关闭）
+    const autoLoadData = localStorage.getItem(PDF_PREVIEW_AUTO_LOAD_KEY);
+    if (autoLoadData) {
+      const autoLoad = JSON.parse(autoLoadData);
+      autoLoadPdfPreview.value = autoLoad.enabled === true;
+    } else {
+      autoLoadPdfPreview.value = false;
+    }
+
+    // 加载大小阈值设置（默认 5MB）
+    const thresholdData = localStorage.getItem('pdfPreviewSizeThreshold');
+    if (thresholdData) {
+      const threshold = JSON.parse(thresholdData);
+      pdfPreviewSizeThreshold.value = threshold.value || 5;
+    } else {
+      pdfPreviewSizeThreshold.value = 5;
+    }
+  } catch (e) {
+    logger.warn('[Settings]', 'Failed to load PDF preview settings:', e);
+    pdfPreviewVerified.value = false;
+    autoLoadPdfPreview.value = false;
+    pdfPreviewSizeThreshold.value = 5;
+  }
+};
+
+// 处理 PDF 预览自动加载设置变化
+const handleAutoLoadPdfPreviewChange = (value: boolean) => {
+  try {
+    localStorage.setItem(PDF_PREVIEW_AUTO_LOAD_KEY, JSON.stringify({
+      enabled: value,
+      timestamp: Date.now()
+    }));
+
+    // 同时更新用户启用状态
+    localStorage.setItem(PDF_PREVIEW_USER_ENABLED_KEY, JSON.stringify({
+      enabled: true,
+      timestamp: Date.now()
+    }));
+
+    if (value) {
+      ElMessage.success('已开启自动加载 PDF 预览');
+    } else {
+      ElMessage.success('已关闭自动加载 PDF 预览');
+    }
+  } catch (e) {
+    logger.error('[Settings]', 'Failed to save PDF preview setting:', e);
+    ElMessage.error('设置保存失败');
+  }
+};
+
+// 前往 PDF 预览检测页面
+const goToPdfPreviewChallenge = () => {
+  router.push('/pdf-preview-challenge');
+};
+
+// 处理阈值变化
+const handleThresholdChange = (value: number) => {
+  try {
+    localStorage.setItem('pdfPreviewSizeThreshold', JSON.stringify({
+      value: value,
+      timestamp: Date.now()
+    }));
+    ElMessage.success(`已设置自动加载阈值：${value}MB`);
+  } catch (e) {
+    logger.error('[Settings]', 'Failed to save threshold setting:', e);
+    ElMessage.error('设置保存失败');
+  }
+};
 
 // 加载用户指南设置
 const loadUserGuideSetting = () => {
@@ -396,6 +540,28 @@ const handleResourceGuideChange = (value: boolean) => {
 
 .setting-control {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.setting-hint {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+/* 阈值设置样式 */
+.threshold-setting {
+  background-color: #f5f7fa;
+  border-radius: 8px;
+  margin-top: 8px;
+  padding: 16px 20px;
+}
+
+.threshold-input {
+  width: 120px;
 }
 
 /* 缓存内容区域 - 无内边框设计 */

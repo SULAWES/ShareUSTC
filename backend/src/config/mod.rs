@@ -58,6 +58,10 @@ pub struct Config {
     pub allow_email_change: bool,
     /// 品牌配置
     pub brand: BrandConfig,
+    /// PDF 预览检测资源 UUID
+    pub pdf_preview_challenge_uuid: Option<String>,
+    /// PDF 预览检测验证码
+    pub pdf_preview_challenge_code: Option<String>,
 }
 
 impl Config {
@@ -159,6 +163,9 @@ impl Config {
                 .unwrap_or(true),
             // 品牌配置
             brand: BrandConfig::from_env(),
+            // PDF 预览检测配置
+            pdf_preview_challenge_uuid: optional_env("PDF_PREVIEW_CHALLENGE_UUID"),
+            pdf_preview_challenge_code: optional_env("PDF_PREVIEW_CHALLENGE_CODE"),
         }
     }
 }

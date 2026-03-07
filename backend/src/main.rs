@@ -248,6 +248,8 @@ async fn main() -> std::io::Result<()> {
         config.allow_username_change,
         config.allow_email_change,
         config.brand.clone(),
+        config.pdf_preview_challenge_uuid.clone(),
+        config.pdf_preview_challenge_code.clone(),
     ));
 
     // 启动文件哈希计算后台任务
@@ -305,6 +307,8 @@ async fn main() -> std::io::Result<()> {
             // /api/resources GET 方法公开（列表、搜索、详情、下载），但排除需要登录的接口
             PublicPathRule::with_methods("/api/resources", vec![Method::GET])
                 .exclude(vec!["/api/resources/my", "/api/resources/{id}/rate"]),
+            // /api/resources/pdf-preview-challenge 全部公开（支持未登录用户检测）
+            PublicPathRule::all_methods("/api/resources/pdf-preview-challenge"),
             // /api/users/{user_id} 和 /api/users/{user_id}/homepage GET 方法公开
             // 排除 /api/users/me 和 /api/users/verify
             PublicPathRule::with_methods("/api/users", vec![Method::GET])

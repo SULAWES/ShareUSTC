@@ -961,7 +961,9 @@ pub async fn track_download(
 pub fn config_public(cfg: &mut web::ServiceConfig) {
     // 注意：具体路径必须放在通配路径之前注册
     // 否则 /resources/hot 会被 /resources/{id} 匹配
-    cfg.service(get_hot_resources) // /resources/hot （先注册具体路径）
+    cfg.service(get_pdf_preview_challenge_config) // /resources/pdf-preview-challenge/config
+        .service(verify_pdf_preview_challenge) // /resources/pdf-preview-challenge/verify
+        .service(get_hot_resources) // /resources/hot （先注册具体路径）
         .service(get_resource_count) // /resources/count
         .service(search_resources_for_relation) // /resources/search-for-relation
         .service(get_resource_list) // /resources
@@ -1489,6 +1491,63 @@ pub async fn update_resource_description(
                 _ => internal_error("更新资源描述失败"),
             }
         }
+    }
+}
+
+/// 获取 PDF 预览检测配置
+#[get("/resources/pdf-preview-challenge/config")]
+pub async fn get_pdf_preview_challenge_config(
+    state: web::Data<AppState>,
+) -> impl Responder {
+    match &state.pdf_preview_challenge_uuid {
+        Some(uuid) => {
+            HttpResponse::Ok().json(serde_json::json!({
+                "resourceId": uuid,
+                "enabled": true
+            }))
+        }
+        None => {
+            HttpResponse::Ok().json(serde_json::json!({
+                "resourceId": null,
+                "enabled": false
+            }))
+        }
+    }
+}
+
+/// 验证 PDF 预览检测答案
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VerifyPdfPreviewChallengeRequest {
+    code: String,
+}
+
+#[post("/resources/pdf-preview-challenge/verify")]
+pub async fn verify_pdf_preview_challenge(
+    state: web::Data<AppState>,
+    request: web::Json<VerifyPdfPreviewChallengeRequest>,
+) -> impl Responder {
+    // 检查是否配置了挑战
+    if state.pdf_preview_challenge_uuid.is_none() || state.pdf_preview_challenge_code.is_none() {
+        return HttpResponse::ServiceUnavailable().json(serde_json::json!({
+            "error": "ServiceUnavailable",
+            "message": "PDF预览检测功能未配置"
+        }));
+    }
+
+    let expected_code = state.pdf_preview_challenge_code.as_ref().unwrap();
+
+    // 验证答案
+    if request.code.trim() == expected_code.trim() {
+        HttpResponse::Ok().json(serde_json::json!({
+            "success": true,
+            "message": "验证成功"
+        }))
+    } else {
+        HttpResponse::Ok().json(serde_json::json!({
+            "success": false,
+            "message": "验证码错误"
+        }))
     }
 }
 

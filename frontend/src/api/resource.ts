@@ -582,3 +582,35 @@ export const trackResourceDownload = async (
     method: 'post'
   });
 };
+
+/**
+ * PDF 预览检测配置响应
+ */
+export interface PdfPreviewChallengeConfig {
+  resourceId: string | null;
+  enabled: boolean;
+}
+
+/**
+ * 获取 PDF 预览检测配置
+ * @returns 检测配置，包含资源ID和是否启用
+ */
+export const getPdfPreviewChallengeConfig = async (): Promise<PdfPreviewChallengeConfig> => {
+  return request({
+    url: '/resources/pdf-preview-challenge/config',
+    method: 'get'
+  });
+};
+
+/**
+ * 验证 PDF 预览检测结果
+ * @param code 用户输入的四位数字验证码
+ * @returns 验证结果
+ */
+export const verifyPdfPreviewChallenge = async (code: string): Promise<{ success: boolean; message: string }> => {
+  return request({
+    url: '/resources/pdf-preview-challenge/verify',
+    method: 'post',
+    data: { code }
+  });
+};

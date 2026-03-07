@@ -45,6 +45,10 @@ pub struct AppState {
     pub allow_email_change: bool,
     /// 品牌配置
     pub brand: BrandConfig,
+    /// PDF 预览检测资源 UUID
+    pub pdf_preview_challenge_uuid: Option<String>,
+    /// PDF 预览检测验证码
+    pub pdf_preview_challenge_code: Option<String>,
 }
 
 impl AppState {
@@ -57,6 +61,8 @@ impl AppState {
         allow_username_change: bool,
         allow_email_change: bool,
         brand: BrandConfig,
+        pdf_preview_challenge_uuid: Option<String>,
+        pdf_preview_challenge_code: Option<String>,
     ) -> Self {
         Self {
             pool,
@@ -67,6 +73,8 @@ impl AppState {
             allow_username_change,
             allow_email_change,
             brand,
+            pdf_preview_challenge_uuid,
+            pdf_preview_challenge_code,
         }
     }
 }
@@ -103,6 +111,8 @@ mod tests {
         // 由于无法在没有真实数据库的情况下创建 PgPool，
         // 我们只进行类型检查
 
+        use crate::config::BrandConfig;
+
         // 验证 AppState::new 的参数类型
         fn _check_app_state_new_signature(
             pool: PgPool,
@@ -112,12 +122,15 @@ mod tests {
             require_email_on_register: bool,
             allow_username_change: bool,
             allow_email_change: bool,
+            brand: BrandConfig,
+            pdf_preview_challenge_uuid: Option<String>,
+            pdf_preview_challenge_code: Option<String>,
         ) -> AppState {
-            AppState::new(pool, jwt_secret, cookie_secure, storage, require_email_on_register, allow_username_change, allow_email_change)
+            AppState::new(pool, jwt_secret, cookie_secure, storage, require_email_on_register, allow_username_change, allow_email_change, brand, pdf_preview_challenge_uuid, pdf_preview_challenge_code)
         }
 
         // 验证函数指针类型
-        let _: fn(PgPool, String, bool, Arc<dyn StorageBackend>, bool, bool, bool) -> AppState = _check_app_state_new_signature;
+        let _: fn(PgPool, String, bool, Arc<dyn StorageBackend>, bool, bool, bool, BrandConfig, Option<String>, Option<String>) -> AppState = _check_app_state_new_signature;
 
         // 测试通过，类型检查完成
         assert!(true);

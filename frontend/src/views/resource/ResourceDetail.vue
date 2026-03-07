@@ -142,6 +142,7 @@
                   :resource-id="resourceId"
                   :resource-type="resource.resourceType"
                   :resource-title="resource.title"
+                  :file-size="resource.fileSize"
                 />
               </div>
             </el-card>
